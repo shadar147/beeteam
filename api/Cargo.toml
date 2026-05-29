@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/bt-domain", "crates/bt-db"]
+members = ["crates/bt-domain", "crates/bt-db", "crates/bt-api"]
 
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }
