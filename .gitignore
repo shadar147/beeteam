@@ -1,0 +1,29 @@
+# Node / Next.js
+node_modules/
+.next/
+out/
+.pnpm-store/
+*.tsbuildinfo
+.turbo/
+
+# Rust
+/api/target/
+**/target/
+
+# Env & secrets
+.env
+.env.local
+.env*.local
+!.env.example
+
+# Build artifacts / data
+/web/lib/api/schema.d.ts.tmp
+*.log
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+
+# Local infra volumes
+/.docker-data/
