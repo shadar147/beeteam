@@ -185,10 +185,12 @@ components = ["rustfmt", "clippy"]
 
 - [ ] **Step 2: Workspace manifest (`api/Cargo.toml`)**
 
+> **Members grow as crates are created.** Declare only the crate that exists now; Task 3 appends `crates/bt-db` and Task 4 appends `crates/bt-api`. This keeps every commit's workspace loadable (cargo refuses to load a workspace whose declared member directories don't exist).
+
 ```toml
 [workspace]
 resolver = "2"
-members = ["crates/bt-domain", "crates/bt-db", "crates/bt-api"]
+members = ["crates/bt-domain"]
 
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }
@@ -282,9 +284,18 @@ git commit -m "feat(api): rust workspace skeleton + bt-domain Health type"
 ## Task 3: `bt-db` — pool + v1 schema migration
 
 **Files:**
+- Modify: `api/Cargo.toml` (append `crates/bt-db` to workspace members)
 - Create: `api/crates/bt-db/Cargo.toml`
 - Create: `api/crates/bt-db/src/lib.rs`
 - Create: `api/crates/bt-db/migrations/0001_init.sql`
+
+- [ ] **Step 0: Register the crate in the workspace (`api/Cargo.toml`)**
+
+Change the members line to include the new crate:
+
+```toml
+members = ["crates/bt-domain", "crates/bt-db"]
+```
 
 - [ ] **Step 1: `bt-db` manifest (`api/crates/bt-db/Cargo.toml`)**
 
@@ -517,12 +528,21 @@ git commit -m "feat(db): bt-db pool + v1 schema migration with smoke test"
 ## Task 4: `bt-api` — axum app with `GET /v1/health`
 
 **Files:**
+- Modify: `api/Cargo.toml` (append `crates/bt-api` to workspace members)
 - Create: `api/crates/bt-api/Cargo.toml`
 - Create: `api/crates/bt-api/src/error.rs`
 - Create: `api/crates/bt-api/src/routes/mod.rs`
 - Create: `api/crates/bt-api/src/routes/health.rs`
 - Create: `api/crates/bt-api/src/app.rs`
 - Create: `api/crates/bt-api/src/main.rs`
+
+- [ ] **Step 0: Register the crate in the workspace (`api/Cargo.toml`)**
+
+Change the members line to the full set (all three crates now exist):
+
+```toml
+members = ["crates/bt-domain", "crates/bt-db", "crates/bt-api"]
+```
 
 - [ ] **Step 1: `bt-api` manifest (`api/crates/bt-api/Cargo.toml`)**
 
