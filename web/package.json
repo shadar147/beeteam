@@ -10,8 +10,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
-    "gen:api": "openapi-typescript http://localhost:8080/api-docs/openapi.json -o lib/api/schema.d.ts",
-    "test:e2e": "playwright test"
+    "gen:api": "openapi-typescript http://localhost:8080/api-docs/openapi.json -o lib/api/schema.d.ts"
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.2.4",
