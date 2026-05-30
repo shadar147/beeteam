@@ -277,7 +277,11 @@ TweaksPanel (dev-only in prototype), real AD/SAML, multi-workspace tenancy UI,
 ## What to preserve when porting (from README §"Что важно сохранить")
 1. Warm palette — backgrounds slightly beige (`#FAFAF7`), never pure white.
 2. Amber accent = the "bee" brand color, used only for attention (CTA, active, today,
-   accent metric), never decoration.
+   accent metric), never decoration. **Implementation note:** shadcn/ui reserves the
+   `accent` token name, so the README's `--accent` brand family is implemented as
+   `--brand` / Tailwind `brand` (use `bg-brand`, `text-brand-text`, `bg-brand-soft`,
+   etc.). `accent` belongs to shadcn's neutral system. Do not use `bg-accent` for the
+   amber brand color.
 3. Tabular numbers everywhere there are counters/dates/percents.
 4. Russian product microcopy and tone ("1-2-1", "Просрочены", "Требуют внимания").
 5. Pill-based statuses — always dot + border, never plain text.

@@ -12,6 +12,8 @@ This plan is the first of several per-slice plans for the Core 1-2-1 spec (`docs
 
 > **Note on sqlx compile-time checks:** Foundation uses the runtime query API (`sqlx::query(...)`) for the seed and a DB-less health handler, so no live DB is needed at build time. Later feature plans adopt `query_as!` with an offline cache (`cargo sqlx prepare`, committed `.sqlx/`). This is intentional to keep the foundation build unblocked.
 
+> **Testing convention (DB isolation):** All Rust tests run against an isolated, ephemeral test database — never the dev DB. Bring it up once with `docker compose up -d postgres-test` (service on :5433, tmpfs, `fsync=off`), then run tests via `api/scripts/test.sh [cargo test args]`, which loads `.env` and forces `DATABASE_URL=TEST_DATABASE_URL` so `#[sqlx::test]` creates its throwaway databases on the test server. Anywhere a task below says `... && cd api && cargo test -p <crate>`, use `api/scripts/test.sh -p <crate>` instead. (The dev DB on :5432 is only used by `cargo run` for the real seed/app.)
+
 ---
 
 ## File Structure
@@ -185,10 +187,12 @@ components = ["rustfmt", "clippy"]
 
 - [ ] **Step 2: Workspace manifest (`api/Cargo.toml`)**
 
+> **Members grow as crates are created.** Declare only the crate that exists now; Task 3 appends `crates/bt-db` and Task 4 appends `crates/bt-api`. This keeps every commit's workspace loadable (cargo refuses to load a workspace whose declared member directories don't exist).
+
 ```toml
 [workspace]
 resolver = "2"
-members = ["crates/bt-domain", "crates/bt-db", "crates/bt-api"]
+members = ["crates/bt-domain"]
 
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }
@@ -197,7 +201,7 @@ uuid = { version = "1", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 utoipa = { version = "5", features = ["chrono", "uuid"] }
 sqlx = { version = "0.8", default-features = false, features = [
-  "runtime-tokio-rustls", "postgres", "uuid", "chrono", "json", "macros"
+  "runtime-tokio-rustls", "postgres", "uuid", "chrono", "json", "macros", "migrate"
 ] }
 tokio = { version = "1", features = ["full"] }
 axum = "0.7"
@@ -282,9 +286,18 @@ git commit -m "feat(api): rust workspace skeleton + bt-domain Health type"
 ## Task 3: `bt-db` — pool + v1 schema migration
 
 **Files:**
+- Modify: `api/Cargo.toml` (append `crates/bt-db` to workspace members)
 - Create: `api/crates/bt-db/Cargo.toml`
 - Create: `api/crates/bt-db/src/lib.rs`
 - Create: `api/crates/bt-db/migrations/0001_init.sql`
+
+- [ ] **Step 0: Register the crate in the workspace (`api/Cargo.toml`)**
+
+Change the members line to include the new crate:
+
+```toml
+members = ["crates/bt-domain", "crates/bt-db"]
+```
 
 - [ ] **Step 1: `bt-db` manifest (`api/crates/bt-db/Cargo.toml`)**
 
@@ -517,12 +530,21 @@ git commit -m "feat(db): bt-db pool + v1 schema migration with smoke test"
 ## Task 4: `bt-api` — axum app with `GET /v1/health`
 
 **Files:**
+- Modify: `api/Cargo.toml` (append `crates/bt-api` to workspace members)
 - Create: `api/crates/bt-api/Cargo.toml`
 - Create: `api/crates/bt-api/src/error.rs`
 - Create: `api/crates/bt-api/src/routes/mod.rs`
 - Create: `api/crates/bt-api/src/routes/health.rs`
 - Create: `api/crates/bt-api/src/app.rs`
 - Create: `api/crates/bt-api/src/main.rs`
+
+- [ ] **Step 0: Register the crate in the workspace (`api/Cargo.toml`)**
+
+Change the members line to the full set (all three crates now exist):
+
+```toml
+members = ["crates/bt-domain", "crates/bt-db", "crates/bt-api"]
+```
 
 - [ ] **Step 1: `bt-api` manifest (`api/crates/bt-api/Cargo.toml`)**
 
@@ -1197,7 +1219,7 @@ Replace the file contents with:
 @tailwind components;
 @tailwind utilities;
 
-html { background: var(--bg); color: var(--ink); }
+html { background: var(--bg); color: var(--ink); font-family: var(--font-geist), system-ui, sans-serif; }
 body { font-feature-settings: "ss01", "cv11"; }
 .tabular { font-variant-numeric: tabular-nums; }
 ```
