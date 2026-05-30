@@ -3,14 +3,14 @@ use sqlx::PgPool;
 
 /// Idempotent demo seed. No-op if a workspace already exists.
 pub async fn seed_demo(pool: &PgPool) -> Result<(), sqlx::Error> {
+    let mut tx = pool.begin().await?;
+
     let existing: (i64,) = sqlx::query_as("SELECT count(*) FROM workspaces")
-        .fetch_one(pool)
+        .fetch_one(&mut *tx)
         .await?;
     if existing.0 > 0 {
-        return Ok(());
+        return Ok(()); // tx drops and rolls back — no-op
     }
-
-    let mut tx = pool.begin().await?;
 
     // Workspace
     let ws: (uuid::Uuid,) = sqlx::query_as(
@@ -64,7 +64,7 @@ pub async fn seed_demo(pool: &PgPool) -> Result<(), sqlx::Error> {
         .bind(i as i32)
         .bind(*ty)
         .bind(*title)
-        .bind(*ph)
+        .bind(opt(*ph))
         .execute(&mut *tx)
         .await?;
     }
@@ -115,7 +115,8 @@ pub async fn seed_demo(pool: &PgPool) -> Result<(), sqlx::Error> {
 
     // Anna's meeting history (ported from data.js annaHistory).
     // (year, month, day, state, duration, mood, mood_score, blockers, goals, feedback_to, feedback_from, development[], relationships)
-    if let Some(aid) = anna_id {
+    {
+        let aid = anna_id.expect("seed: 'Анна Лебедева' must be among the seeded members");
         type Mtg = (i32, u32, u32, &'static str, i32, Option<&'static str>, Option<i32>, &'static str, &'static str, &'static str, &'static str, &'static [&'static str], &'static str);
         let history: [Mtg; 6] = [
             (2026,5,11,"done",45,Some("🙂"),Some(8),

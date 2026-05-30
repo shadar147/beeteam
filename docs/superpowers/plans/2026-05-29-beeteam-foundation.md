@@ -12,6 +12,8 @@ This plan is the first of several per-slice plans for the Core 1-2-1 spec (`docs
 
 > **Note on sqlx compile-time checks:** Foundation uses the runtime query API (`sqlx::query(...)`) for the seed and a DB-less health handler, so no live DB is needed at build time. Later feature plans adopt `query_as!` with an offline cache (`cargo sqlx prepare`, committed `.sqlx/`). This is intentional to keep the foundation build unblocked.
 
+> **Testing convention (DB isolation):** All Rust tests run against an isolated, ephemeral test database — never the dev DB. Bring it up once with `docker compose up -d postgres-test` (service on :5433, tmpfs, `fsync=off`), then run tests via `api/scripts/test.sh [cargo test args]`, which loads `.env` and forces `DATABASE_URL=TEST_DATABASE_URL` so `#[sqlx::test]` creates its throwaway databases on the test server. Anywhere a task below says `... && cd api && cargo test -p <crate>`, use `api/scripts/test.sh -p <crate>` instead. (The dev DB on :5432 is only used by `cargo run` for the real seed/app.)
+
 ---
 
 ## File Structure
@@ -199,7 +201,7 @@ uuid = { version = "1", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 utoipa = { version = "5", features = ["chrono", "uuid"] }
 sqlx = { version = "0.8", default-features = false, features = [
-  "runtime-tokio-rustls", "postgres", "uuid", "chrono", "json", "macros"
+  "runtime-tokio-rustls", "postgres", "uuid", "chrono", "json", "macros", "migrate"
 ] }
 tokio = { version = "1", features = ["full"] }
 axum = "0.7"
