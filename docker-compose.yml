@@ -32,6 +32,28 @@ services:
       timeout: 3s
       retries: 10
 
+  # Dedicated, ephemeral Postgres for the test suite — isolated from the dev
+  # database so `#[sqlx::test]` create/drop churn never touches dev data.
+  # tmpfs + fsync=off make the many CREATE DATABASE + migration runs fast;
+  # data lives in RAM and is discarded on restart (intended).
+  postgres-test:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: beeteam
+      POSTGRES_PASSWORD: beeteam
+      POSTGRES_DB: beeteam
+    ports:
+      - "5433:5432"
+    tmpfs:
+      - /var/lib/postgresql/data
+    command:
+      ["postgres", "-c", "fsync=off", "-c", "synchronous_commit=off", "-c", "full_page_writes=off"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U beeteam"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   adminer:
     image: adminer:latest
     ports:
