@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
+import { Providers } from "./providers";
 
 // GeistVF.woff is the Geist variable font (weight 100–900) bundled by create-next-app.
 // It includes Cyrillic glyphs — no subset restriction needed for local fonts.
@@ -20,7 +21,7 @@ export const metadata: Metadata = { title: "BeeTeam", description: "1-2-1 тре
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="ru" data-theme="light" data-density="regular" className={`${geist.variable} ${geistMono.variable}`}>
-      <body>{children}</body>
+      <body><Providers>{children}</Providers></body>
     </html>
   );
 }

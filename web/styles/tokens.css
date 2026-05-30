@@ -1,9 +1,9 @@
 :root,
 [data-theme="light"] {
-  --accent: #F5A524;
-  --accent-strong: #D8870A;
-  --accent-soft: #FEF6E4;
-  --accent-text: #5C3A00;
+  --brand: #F5A524;
+  --brand-strong: #D8870A;
+  --brand-soft: #FEF6E4;
+  --brand-text: #5C3A00;
 
   --bg: #FAFAF7;
   --bg-elev: #FFFFFF;
@@ -41,7 +41,7 @@
   --bg-sunken: #100F0B;
   --ink: #F1ECDB; --ink-2: #D7D1BC; --ink-3: #8F8973; --ink-4: #5B5644;
   --line: #2A2820; --line-2: #23211B; --line-strong: #3A372C;
-  --accent-soft: #3A2A0A; --accent-text: #FBE6B0;
+  --brand-soft: #3A2A0A; --brand-text: #FBE6B0;
 }
 
 /* Density modes affect row/feed/stat padding (consumed via var in components). */

@@ -6,7 +6,7 @@ const css = readFileSync(resolve(__dirname, "../../styles/tokens.css"), "utf8");
 
 describe("design tokens", () => {
   it("defines the amber brand accent in light theme", () => {
-    expect(css).toMatch(/--accent:\s*#F5A524/);
+    expect(css).toMatch(/--brand:\s*#F5A524/);
   });
 
   it("defines a dark-theme background override", () => {
