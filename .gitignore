@@ -27,3 +27,8 @@ out/
 
 # Local infra volumes
 /.docker-data/
+
+# Playwright reports and results
+/web/test-results/
+/web/playwright-report/
+/web/.playwright/
