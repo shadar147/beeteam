@@ -20,6 +20,7 @@ async fn main() -> anyhow::Result<()> {
 
     let pool = bt_db::pool(&database_url).await?;
     bt_db::migrate(&pool).await?;
+    bt_db::seed::seed_demo(&pool).await?;
 
     let router = build_router(AppState { pool });
     let listener = tokio::net::TcpListener::bind(&bind).await?;
