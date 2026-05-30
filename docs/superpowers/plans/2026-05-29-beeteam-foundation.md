@@ -1219,7 +1219,7 @@ Replace the file contents with:
 @tailwind components;
 @tailwind utilities;
 
-html { background: var(--bg); color: var(--ink); }
+html { background: var(--bg); color: var(--ink); font-family: var(--font-geist), system-ui, sans-serif; }
 body { font-feature-settings: "ss01", "cv11"; }
 .tabular { font-variant-numeric: tabular-nums; }
 ```
