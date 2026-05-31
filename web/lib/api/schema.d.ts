@@ -52,6 +52,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/teams/{id}/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_members"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/teams/{id}/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["team_stats"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -70,6 +102,48 @@ export interface components {
         LoginResponse: {
             token: string;
             user: components["schemas"]["UserDto"];
+        };
+        /** @description `/auth/me` response: the user plus the team they lead (if any). */
+        MeResponse: {
+            email: string;
+            /** Format: uuid */
+            id: string;
+            name: string;
+            role: string;
+            /** Format: uuid */
+            team_id?: string | null;
+        };
+        /** @description A team member as shown in the TeamList table. */
+        MemberRow: {
+            email: string;
+            /** Format: int32 */
+            hue: number;
+            /** Format: uuid */
+            id: string;
+            joined: string;
+            /** Format: date-time */
+            last_meet?: string | null;
+            mood_trend: number[];
+            name: string;
+            /** Format: date-time */
+            next_meet?: string | null;
+            role: string;
+            status: string;
+            tags: string[];
+            tz: string;
+        };
+        /** @description The 4 TeamList stat cards. */
+        TeamStats: {
+            /** Format: double */
+            avg_mood: number;
+            /** Format: double */
+            avg_mood_delta: number;
+            /** Format: int64 */
+            notes_quarter: number;
+            /** Format: int64 */
+            overdue: number;
+            /** Format: int64 */
+            this_week: number;
         };
         /** @description Public user shape returned to the client. */
         UserDto: {
@@ -134,7 +208,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["UserDto"];
+                    "application/json": components["schemas"]["MeResponse"];
                 };
             };
             /** @description Not authenticated */
@@ -163,6 +237,66 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Health"];
                 };
+            };
+        };
+    };
+    list_members: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Team id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Team members */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemberRow"][];
+                };
+            };
+            /** @description Not the team's lead */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    team_stats: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Team id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Team stats */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TeamStats"];
+                };
+            };
+            /** @description Not the team's lead */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

@@ -1,6 +1,6 @@
 import createClient from "openapi-fetch";
 import type { paths } from "./schema";
 
-const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
-
-export const api = createClient<paths>({ baseUrl });
+// Browser calls go through the Next proxy (/api/v1/*), which maps the httpOnly
+// session cookie to a Bearer header. No direct browser→axum calls.
+export const api = createClient<paths>({ baseUrl: "/api" });
