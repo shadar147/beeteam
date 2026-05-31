@@ -1,8 +1,10 @@
 use axum::extract::State;
+use axum::Extension;
 use axum::Json;
 use bt_domain::{LoginRequest, LoginResponse, UserDto};
 
 use crate::app::AppState;
+use crate::auth::middleware::AuthUser;
 use crate::auth::{jwt, password};
 use crate::error::{AppError, AppResult};
 
@@ -40,6 +42,29 @@ pub async fn login(
         token,
         user: UserDto { id, name, email, role },
     }))
+}
+
+#[utoipa::path(
+    get,
+    path = "/v1/auth/me",
+    responses(
+        (status = 200, description = "Current user", body = UserDto),
+        (status = 401, description = "Not authenticated"),
+    )
+)]
+pub async fn me(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthUser>,
+) -> AppResult<Json<UserDto>> {
+    let row: Option<(uuid::Uuid, String, String, String)> = sqlx::query_as(
+        "SELECT id, name, email, role::text FROM users WHERE id = $1",
+    )
+    .bind(auth.id)
+    .fetch_optional(&state.pool)
+    .await?;
+
+    let (id, name, email, role) = row.ok_or(AppError::Unauthorized)?;
+    Ok(Json(UserDto { id, name, email, role }))
 }
 
 #[cfg(test)]
@@ -110,5 +135,36 @@ mod tests {
         let (status, _) =
             post_login(pool, r#"{"email":"ghost@x.io","password":"demo1234"}"#).await;
         assert_eq!(status, StatusCode::UNAUTHORIZED);
+    }
+
+    async fn get_me(pool: sqlx::PgPool, bearer: Option<&str>) -> StatusCode {
+        let mut builder = Request::builder().method("GET").uri("/v1/auth/me");
+        if let Some(b) = bearer {
+            builder = builder.header("authorization", format!("Bearer {b}"));
+        }
+        app(pool)
+            .oneshot(builder.body(Body::empty()).unwrap())
+            .await
+            .unwrap()
+            .status()
+    }
+
+    #[sqlx::test(migrations = "../bt-db/migrations")]
+    async fn me_returns_user_with_valid_token(pool: sqlx::PgPool) {
+        seed_one_user(&pool).await;
+        let (_, json) =
+            post_login(pool.clone(), r#"{"email":"lead@x.io","password":"demo1234"}"#).await;
+        let token = json["token"].as_str().unwrap().to_string();
+        assert_eq!(get_me(pool, Some(&token)).await, StatusCode::OK);
+    }
+
+    #[sqlx::test(migrations = "../bt-db/migrations")]
+    async fn me_rejects_missing_token(pool: sqlx::PgPool) {
+        assert_eq!(get_me(pool, None).await, StatusCode::UNAUTHORIZED);
+    }
+
+    #[sqlx::test(migrations = "../bt-db/migrations")]
+    async fn me_rejects_garbage_token(pool: sqlx::PgPool) {
+        assert_eq!(get_me(pool, Some("not.a.jwt")).await, StatusCode::UNAUTHORIZED);
     }
 }
