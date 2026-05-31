@@ -21,8 +21,9 @@ test("login then logout round-trips through the shell", async ({ page }) => {
   await page.getByLabel("Пароль", { exact: true }).fill("demo1234");
   await page.getByRole("button", { name: /Войти/ }).click();
 
-  // Lands in the (app) shell.
-  await expect(page).toHaveURL(/\/$/);
+  // Lands in the (app) shell. Generous timeout: Next dev compiles the `/`
+  // route on first request, so a cold server can take several seconds here.
+  await expect(page).toHaveURL(/\/$/, { timeout: 20_000 });
   await expect(page.getByText("Евгений Глебов")).toBeVisible();
   await expect(page.getByText("Моя команда").first()).toBeVisible();
 
