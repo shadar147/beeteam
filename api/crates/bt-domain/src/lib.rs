@@ -58,6 +58,23 @@ pub struct MeResponse {
     pub team_id: Option<uuid::Uuid>,
 }
 
+/// A team member as shown in the TeamList table.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct MemberRow {
+    pub id: uuid::Uuid,
+    pub name: String,
+    pub role: String,
+    pub email: String,
+    pub joined: String,
+    pub tz: String,
+    pub hue: i32,
+    pub tags: Vec<String>,
+    pub status: String,
+    pub mood_trend: Vec<i32>,
+    pub last_meet: Option<chrono::DateTime<chrono::Utc>>,
+    pub next_meet: Option<chrono::DateTime<chrono::Utc>>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
