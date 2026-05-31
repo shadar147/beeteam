@@ -48,6 +48,16 @@ pub struct LoginResponse {
     pub user: UserDto,
 }
 
+/// `/auth/me` response: the user plus the team they lead (if any).
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, PartialEq)]
+pub struct MeResponse {
+    pub id: uuid::Uuid,
+    pub name: String,
+    pub email: String,
+    pub role: String,
+    pub team_id: Option<uuid::Uuid>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

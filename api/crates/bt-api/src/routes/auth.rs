@@ -1,7 +1,7 @@
 use axum::extract::State;
 use axum::Extension;
 use axum::Json;
-use bt_domain::{LoginRequest, LoginResponse, UserDto};
+use bt_domain::{LoginRequest, LoginResponse, MeResponse, UserDto};
 
 use crate::app::AppState;
 use crate::auth::middleware::AuthUser;
@@ -48,14 +48,14 @@ pub async fn login(
     get,
     path = "/v1/auth/me",
     responses(
-        (status = 200, description = "Current user", body = UserDto),
+        (status = 200, description = "Current user", body = MeResponse),
         (status = 401, description = "Not authenticated"),
     )
 )]
 pub async fn me(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthUser>,
-) -> AppResult<Json<UserDto>> {
+) -> AppResult<Json<MeResponse>> {
     let row: Option<(uuid::Uuid, String, String, String)> = sqlx::query_as(
         "SELECT id, name, email, role::text FROM users WHERE id = $1",
     )
@@ -64,7 +64,15 @@ pub async fn me(
     .await?;
 
     let (id, name, email, role) = row.ok_or(AppError::Unauthorized)?;
-    Ok(Json(UserDto { id, name, email, role }))
+
+    // The team this user leads (v1: a lead has exactly one).
+    let team: Option<(uuid::Uuid,)> =
+        sqlx::query_as("SELECT id FROM teams WHERE lead_id = $1 LIMIT 1")
+            .bind(auth.id)
+            .fetch_optional(&state.pool)
+            .await?;
+
+    Ok(Json(MeResponse { id, name, email, role, team_id: team.map(|t| t.0) }))
 }
 
 #[cfg(test)]
@@ -76,6 +84,21 @@ mod tests {
 
     use crate::app::{build_router, AppState};
     use crate::auth::password::hash_password;
+
+    async fn seed_user_with_team(pool: &sqlx::PgPool) {
+        let ws: (uuid::Uuid,) =
+            sqlx::query_as("INSERT INTO workspaces (name) VALUES ('T') RETURNING id")
+                .fetch_one(pool).await.unwrap();
+        let hash = hash_password("demo1234").unwrap();
+        let u: (uuid::Uuid,) = sqlx::query_as(
+            "INSERT INTO users (workspace_id, email, password_hash, name, role, hue) \
+             VALUES ($1, 'lead@x.io', $2, 'Lead X', 'lead'::user_role, 40) RETURNING id",
+        ).bind(ws.0).bind(hash).fetch_one(pool).await.unwrap();
+        sqlx::query(
+            "INSERT INTO teams (workspace_id, name, lead_id, default_cadence, visibility) \
+             VALUES ($1, 'T-team', $2, '2w'::cadence, 'private'::visibility)",
+        ).bind(ws.0).bind(u.0).execute(pool).await.unwrap();
+    }
 
     async fn seed_one_user(pool: &sqlx::PgPool) {
         let ws: (uuid::Uuid,) =
@@ -170,5 +193,23 @@ mod tests {
     #[sqlx::test(migrations = "../bt-db/migrations")]
     async fn me_rejects_garbage_token(pool: sqlx::PgPool) {
         assert_eq!(get_me(pool, Some("not.a.jwt")).await, StatusCode::UNAUTHORIZED);
+    }
+
+    #[sqlx::test(migrations = "../bt-db/migrations")]
+    async fn me_returns_team_id_for_a_lead(pool: sqlx::PgPool) {
+        seed_user_with_team(&pool).await;
+        let (_, json) =
+            post_login(pool.clone(), r#"{"email":"lead@x.io","password":"demo1234"}"#).await;
+        let token = json["token"].as_str().unwrap().to_string();
+        let resp = app(pool)
+            .oneshot(
+                Request::builder().method("GET").uri("/v1/auth/me")
+                    .header("authorization", format!("Bearer {token}"))
+                    .body(Body::empty()).unwrap(),
+            ).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+        let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert!(body["team_id"].is_string(), "expected team_id, got {body}");
     }
 }
