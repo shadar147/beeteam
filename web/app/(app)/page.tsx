@@ -1,15 +1,7 @@
-import { Topbar } from "@/components/Topbar";
+import { getSessionUser } from "@/lib/auth";
+import { TeamListClient } from "./TeamListClient";
 
-export default function TeamHome() {
-  return (
-    <>
-      <Topbar title="Моя команда" />
-      <div className="p-6">
-        <div className="rounded-lg border border-dashed border-line-strong bg-bg-tint p-10 text-center text-ink-3">
-          <p className="text-[15px] font-medium text-ink-2">Здесь будет ваша команда</p>
-          <p className="mt-1 text-[13px]">Список сотрудников и метрики появятся в следующем срезе (TeamList).</p>
-        </div>
-      </div>
-    </>
-  );
+export default async function TeamPage() {
+  const user = await getSessionUser(); // layout already guaranteed non-null
+  return <TeamListClient teamId={user?.teamId ?? null} />;
 }
