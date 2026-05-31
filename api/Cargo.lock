@@ -267,6 +267,7 @@ dependencies = [
 name = "bt-db"
 version = "0.1.0"
 dependencies = [
+ "argon2",
  "chrono",
  "serde_json",
  "sqlx",

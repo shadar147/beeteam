@@ -2,8 +2,17 @@ use utoipa::OpenApi;
 
 #[derive(OpenApi)]
 #[openapi(
-    paths(crate::routes::health::health),
-    components(schemas(bt_domain::Health)),
+    paths(
+        crate::routes::health::health,
+        crate::routes::auth::login,
+        crate::routes::auth::me,
+    ),
+    components(schemas(
+        bt_domain::Health,
+        bt_domain::LoginRequest,
+        bt_domain::UserDto,
+        bt_domain::LoginResponse,
+    )),
     info(title = "BeeTeam API", version = "0.1.0")
 )]
 pub struct ApiDoc;
@@ -17,6 +26,8 @@ mod tests {
         let doc = ApiDoc::openapi();
         let json = serde_json::to_value(doc).unwrap();
         assert!(json["paths"]["/v1/health"].is_object());
-        assert!(json["components"]["schemas"]["Health"].is_object());
+        assert!(json["paths"]["/v1/auth/login"].is_object());
+        assert!(json["paths"]["/v1/auth/me"].is_object());
+        assert!(json["components"]["schemas"]["LoginResponse"].is_object());
     }
 }
