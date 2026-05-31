@@ -33,6 +33,7 @@ pub fn build_router(state: AppState) -> Router {
     let protected = Router::new()
         .route("/v1/auth/me", get(routes::auth::me))
         .route("/v1/teams/:id/members", get(routes::teams::list_members))
+        .route("/v1/teams/:id/stats", get(routes::teams::team_stats))
         .route_layer(axum::middleware::from_fn_with_state(state.clone(), require_auth));
 
     Router::new()

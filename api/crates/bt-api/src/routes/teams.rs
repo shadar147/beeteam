@@ -1,6 +1,6 @@
 use axum::extract::{Path, Query, State};
 use axum::Json;
-use bt_domain::MemberRow;
+use bt_domain::{MemberRow, TeamStats};
 use serde::Deserialize;
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -127,6 +127,60 @@ fn filter_since(rows: Vec<MemberRow>, days: i64, within: bool) -> Vec<MemberRow>
     }).collect()
 }
 
+#[utoipa::path(
+    get,
+    path = "/v1/teams/{id}/stats",
+    params(("id" = uuid::Uuid, Path, description = "Team id")),
+    responses(
+        (status = 200, description = "Team stats", body = TeamStats),
+        (status = 403, description = "Not the team's lead"),
+    )
+)]
+pub async fn team_stats(
+    State(state): State<AppState>,
+    axum::Extension(auth): axum::Extension<AuthUser>,
+    Path(team_id): Path<Uuid>,
+) -> AppResult<Json<TeamStats>> {
+    require_team_access(&auth, team_id, &state.pool).await?;
+
+    let this_week: (i64,) = sqlx::query_as(
+        r#"SELECT count(*) FROM team_members tm WHERE tm.team_id = $1 AND EXISTS (
+             SELECT 1 FROM meetings m WHERE m.member_id = tm.id AND m.state='planned'
+               AND m.date >= now() AND m.date < now() + interval '7 days')"#,
+    ).bind(team_id).fetch_one(&state.pool).await?;
+
+    let overdue: (i64,) = sqlx::query_as(
+        r#"SELECT count(*) FROM team_members tm WHERE tm.team_id = $1 AND
+             COALESCE((SELECT max(m.date) FROM meetings m
+                        WHERE m.member_id = tm.id AND m.state='done'),
+                      'epoch') < now() - interval '21 days'"#,
+    ).bind(team_id).fetch_one(&state.pool).await?;
+
+    let (avg_mood, avg_mood_delta): (Option<f64>, Option<f64>) = sqlx::query_as(
+        r#"SELECT
+             avg(tm.mood_trend[array_length(tm.mood_trend,1)])::float8,
+             (avg(tm.mood_trend[array_length(tm.mood_trend,1)])
+              - avg(tm.mood_trend[1]))::float8
+           FROM team_members tm
+           WHERE tm.team_id = $1 AND array_length(tm.mood_trend,1) > 0"#,
+    ).bind(team_id).fetch_one(&state.pool).await?;
+
+    let notes_quarter: (i64,) = sqlx::query_as(
+        r#"SELECT count(*) FROM meetings m
+           JOIN team_members tm ON tm.id = m.member_id
+           WHERE tm.team_id = $1 AND m.state='done'
+             AND m.date >= date_trunc('quarter', now())"#,
+    ).bind(team_id).fetch_one(&state.pool).await?;
+
+    Ok(Json(TeamStats {
+        this_week: this_week.0,
+        overdue: overdue.0,
+        avg_mood: (avg_mood.unwrap_or(0.0) * 10.0).round() / 10.0,
+        avg_mood_delta: (avg_mood_delta.unwrap_or(0.0) * 10.0).round() / 10.0,
+        notes_quarter: notes_quarter.0,
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use axum::body::Body;
@@ -194,6 +248,33 @@ mod tests {
         let status = resp.status();
         let bytes = resp.into_body().collect().await.unwrap().to_bytes();
         (status, serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null))
+    }
+
+    async fn get_stats(pool: sqlx::PgPool, token: &str, team_id: uuid::Uuid)
+        -> (StatusCode, serde_json::Value)
+    {
+        let resp = app(pool).oneshot(
+            Request::builder().method("GET").uri(format!("/v1/teams/{team_id}/stats"))
+                .header("authorization", format!("Bearer {token}"))
+                .body(Body::empty()).unwrap()
+        ).await.unwrap();
+        let status = resp.status();
+        let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+        (status, serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null))
+    }
+
+    #[sqlx::test(migrations = "../bt-db/migrations")]
+    async fn stats_computes_shape(pool: sqlx::PgPool) {
+        let (token, team) = seed_team(&pool).await;
+        let (status, json) = get_stats(pool, &token, team).await;
+        assert_eq!(status, StatusCode::OK);
+        // No meetings seeded → both members overdue (no done meeting), none this week.
+        assert_eq!(json["overdue"], 2);
+        assert_eq!(json["this_week"], 0);
+        // avg latest mood = 8 (both {6,7,8}); delta = 8 - 6 = 2.
+        assert_eq!(json["avg_mood"].as_f64().unwrap(), 8.0);
+        assert_eq!(json["avg_mood_delta"].as_f64().unwrap(), 2.0);
+        assert_eq!(json["notes_quarter"], 0);
     }
 
     #[sqlx::test(migrations = "../bt-db/migrations")]

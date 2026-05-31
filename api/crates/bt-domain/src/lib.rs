@@ -75,6 +75,16 @@ pub struct MemberRow {
     pub next_meet: Option<chrono::DateTime<chrono::Utc>>,
 }
 
+/// The 4 TeamList stat cards.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct TeamStats {
+    pub this_week: i64,
+    pub overdue: i64,
+    pub avg_mood: f64,
+    pub avg_mood_delta: f64,
+    pub notes_quarter: i64,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
