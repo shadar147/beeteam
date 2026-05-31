@@ -9,7 +9,7 @@ test("unauthenticated visit redirects to login", async ({ page }) => {
 test("wrong password shows an inline error", async ({ page }) => {
   await page.goto("/login");
   await page.getByLabel("Корпоративная почта").fill("e.glebov@beeteam.io");
-  await page.getByLabel("Пароль").fill("wrongpass");
+  await page.getByLabel("Пароль", { exact: true }).fill("wrongpass");
   await page.getByRole("button", { name: /Войти/ }).click();
   await expect(page.getByText("Неверная почта или пароль")).toBeVisible();
   await expect(page).toHaveURL(/\/login$/);
@@ -18,7 +18,7 @@ test("wrong password shows an inline error", async ({ page }) => {
 test("login then logout round-trips through the shell", async ({ page }) => {
   await page.goto("/login");
   await page.getByLabel("Корпоративная почта").fill("e.glebov@beeteam.io");
-  await page.getByLabel("Пароль").fill("demo1234");
+  await page.getByLabel("Пароль", { exact: true }).fill("demo1234");
   await page.getByRole("button", { name: /Войти/ }).click();
 
   // Lands in the (app) shell.
