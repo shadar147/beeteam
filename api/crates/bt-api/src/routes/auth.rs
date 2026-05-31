@@ -90,7 +90,11 @@ mod tests {
     }
 
     fn app(pool: sqlx::PgPool) -> axum::Router {
-        build_router(AppState { pool, jwt_secret: "test-secret".into() })
+        build_router(AppState {
+            pool,
+            jwt_secret: "test-secret".into(),
+            web_origin: "http://localhost:3000".into(),
+        })
     }
 
     async fn post_login(pool: sqlx::PgPool, body: &str) -> (StatusCode, serde_json::Value) {

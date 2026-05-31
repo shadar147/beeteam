@@ -14,14 +14,21 @@ use crate::routes;
 pub struct AppState {
     pub pool: PgPool,
     pub jwt_secret: String,
+    pub web_origin: String,
 }
 
 /// Build the application router. Pure function of state — used by tests too.
 pub fn build_router(state: AppState) -> Router {
-    let cors = CorsLayer::new()
-        .allow_origin(Any)
-        .allow_methods(Any)
-        .allow_headers(Any);
+    let cors = match state.web_origin.parse::<axum::http::HeaderValue>() {
+        Ok(origin) => CorsLayer::new()
+            .allow_origin(origin)
+            .allow_methods(Any)
+            .allow_headers(Any),
+        Err(_) => CorsLayer::new()
+            .allow_origin(Any)
+            .allow_methods(Any)
+            .allow_headers(Any),
+    };
 
     let protected = Router::new()
         .route("/v1/auth/me", get(routes::auth::me))

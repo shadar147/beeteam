@@ -20,12 +20,13 @@ async fn main() -> anyhow::Result<()> {
     let bind = std::env::var("API_BIND").unwrap_or_else(|_| "0.0.0.0:8080".into());
 
     let jwt_secret = std::env::var("JWT_SECRET").unwrap_or_else(|_| "dev-only-change-me".into());
+    let web_origin = std::env::var("WEB_ORIGIN").unwrap_or_else(|_| "http://localhost:3000".into());
 
     let pool = bt_db::pool(&database_url).await?;
     bt_db::migrate(&pool).await?;
     bt_db::seed::seed_demo(&pool).await?;
 
-    let router = build_router(AppState { pool, jwt_secret });
+    let router = build_router(AppState { pool, jwt_secret, web_origin });
     let listener = tokio::net::TcpListener::bind(&bind).await?;
     tracing::info!("bt-api listening on {bind}");
     axum::serve(listener, router).await?;

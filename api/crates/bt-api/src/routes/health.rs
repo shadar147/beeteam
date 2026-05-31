@@ -21,7 +21,11 @@ mod tests {
 
     #[sqlx::test]
     async fn health_returns_ok(pool: sqlx::PgPool) {
-        let router = build_router(AppState { pool, jwt_secret: "test-secret".into() });
+        let router = build_router(AppState {
+            pool,
+            jwt_secret: "test-secret".into(),
+            web_origin: "http://localhost:3000".into(),
+        });
         let resp = router
             .oneshot(
                 Request::builder()
