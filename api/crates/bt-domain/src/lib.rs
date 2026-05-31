@@ -17,6 +17,14 @@ impl Health {
     }
 }
 
+/// JWT claims for an authenticated session.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct Claims {
+    pub sub: uuid::Uuid, // user id
+    pub role: String,
+    pub exp: i64, // unix seconds
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
