@@ -1,3 +1,5 @@
+use argon2::password_hash::{rand_core::OsRng, PasswordHasher, SaltString};
+use argon2::Argon2;
 use chrono::TimeZone;
 use sqlx::PgPool;
 
@@ -30,7 +32,7 @@ pub async fn seed_demo(pool: &PgPool) -> Result<(), sqlx::Error> {
     )
     .bind(ws_id)
     .bind("e.glebov@beeteam.io")
-    .bind("!seed-no-login") // replaced by Auth plan with a real argon2 hash
+    .bind(seed_hash("demo1234")) // demo lead password: demo1234
     .bind("Евгений Глебов")
     .bind(40)
     .fetch_one(&mut *tx)
@@ -176,6 +178,15 @@ fn opt(s: &str) -> Option<&str> {
     if s.is_empty() { None } else { Some(s) }
 }
 
+/// Argon2id hash used to seed the demo lead's password (demo1234).
+fn seed_hash(plain: &str) -> String {
+    let salt = SaltString::generate(&mut OsRng);
+    Argon2::default()
+        .hash_password(plain.as_bytes(), &salt)
+        .expect("seed: hashing must succeed")
+        .to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -196,5 +207,15 @@ mod tests {
         let fields: (i64,) = sqlx::query_as("SELECT count(*) FROM field_defs")
             .fetch_one(&pool).await.unwrap();
         assert_eq!(fields.0, 6);
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn seeded_lead_password_hash_is_valid_argon2(pool: PgPool) {
+        seed_demo(&pool).await.unwrap();
+        let hash: (String,) =
+            sqlx::query_as("SELECT password_hash FROM users WHERE email = 'e.glebov@beeteam.io'")
+                .fetch_one(&pool).await.unwrap();
+        assert!(hash.0.starts_with("$argon2id$"), "got: {}", hash.0);
+        assert_ne!(hash.0, "!seed-no-login");
     }
 }

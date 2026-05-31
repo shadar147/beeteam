@@ -9,6 +9,7 @@ uuid = { workspace = true }
 chrono = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
+argon2 = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true }
