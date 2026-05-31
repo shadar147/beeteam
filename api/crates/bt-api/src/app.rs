@@ -12,6 +12,7 @@ use crate::routes;
 #[derive(Clone)]
 pub struct AppState {
     pub pool: PgPool,
+    pub jwt_secret: String,
 }
 
 /// Build the application router. Pure function of state — used by tests too.
@@ -23,6 +24,7 @@ pub fn build_router(state: AppState) -> Router {
 
     Router::new()
         .route("/v1/health", get(routes::health::health))
+        .route("/v1/auth/login", axum::routing::post(routes::auth::login))
         .route("/api-docs/openapi.json", get(openapi_json))
         .layer(TraceLayer::new_for_http())
         .layer(cors)

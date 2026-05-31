@@ -25,6 +25,29 @@ pub struct Claims {
     pub exp: i64, // unix seconds
 }
 
+/// Login request body.
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct LoginRequest {
+    pub email: String,
+    pub password: String,
+}
+
+/// Public user shape returned to the client.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, PartialEq)]
+pub struct UserDto {
+    pub id: uuid::Uuid,
+    pub name: String,
+    pub email: String,
+    pub role: String,
+}
+
+/// Successful login payload.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct LoginResponse {
+    pub token: String,
+    pub user: UserDto,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
