@@ -48,6 +48,43 @@ pub struct LoginResponse {
     pub user: UserDto,
 }
 
+/// `/auth/me` response: the user plus the team they lead (if any).
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, PartialEq)]
+pub struct MeResponse {
+    pub id: uuid::Uuid,
+    pub name: String,
+    pub email: String,
+    pub role: String,
+    pub team_id: Option<uuid::Uuid>,
+}
+
+/// A team member as shown in the TeamList table.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct MemberRow {
+    pub id: uuid::Uuid,
+    pub name: String,
+    pub role: String,
+    pub email: String,
+    pub joined: String,
+    pub tz: String,
+    pub hue: i32,
+    pub tags: Vec<String>,
+    pub status: String,
+    pub mood_trend: Vec<i32>,
+    pub last_meet: Option<chrono::DateTime<chrono::Utc>>,
+    pub next_meet: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+/// The 4 TeamList stat cards.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct TeamStats {
+    pub this_week: i64,
+    pub overdue: i64,
+    pub avg_mood: f64,
+    pub avg_mood_delta: f64,
+    pub notes_quarter: i64,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
