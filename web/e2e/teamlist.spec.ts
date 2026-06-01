@@ -11,8 +11,9 @@ async function login(page: Page) {
 test("team list shows stats and members", async ({ page }) => {
   await login(page);
   await expect(page.getByRole("heading", { name: "Моя команда" })).toBeVisible();
-  await expect(page.getByText("На этой неделе")).toBeVisible();
+  // These two labels are unique to the stat cards (not duplicated by segment tabs).
   await expect(page.getByText("Среднее настроение")).toBeVisible();
+  await expect(page.getByText("Заметок за квартал")).toBeVisible();
   // 8 seeded members → 8 rows linking to profiles.
   await expect(page.locator('a[href^="/profile/"]')).toHaveCount(8, { timeout: 10_000 });
 });
