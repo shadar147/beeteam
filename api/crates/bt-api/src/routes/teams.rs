@@ -38,7 +38,15 @@ pub struct MemberFilters {
 #[utoipa::path(
     get,
     path = "/v1/teams/{id}/members",
-    params(("id" = uuid::Uuid, Path, description = "Team id")),
+    params(
+        ("id" = uuid::Uuid, Path, description = "Team id"),
+        ("q" = Option<String>, Query, description = "Search name or role"),
+        ("role" = Option<String>, Query, description = "Exact role"),
+        ("tenure" = Option<String>, Query, description = "new | mid | sen"),
+        ("mood" = Option<String>, Query, description = "up | flat | down"),
+        ("since" = Option<String>, Query, description = "lt1w | lt2w | gt4w"),
+        ("tags" = Option<String>, Query, description = "comma-separated tags"),
+    ),
     responses(
         (status = 200, description = "Team members", body = [MemberRow]),
         (status = 403, description = "Not the team's lead"),
@@ -153,7 +161,7 @@ pub async fn team_stats(
         r#"SELECT count(*) FROM team_members tm WHERE tm.team_id = $1 AND
              COALESCE((SELECT max(m.date) FROM meetings m
                         WHERE m.member_id = tm.id AND m.state='done'),
-                      'epoch') < now() - interval '21 days'"#,
+                      'epoch') < now() - interval '28 days'"#,
     ).bind(team_id).fetch_one(&state.pool).await?;
 
     let (avg_mood, avg_mood_delta): (Option<f64>, Option<f64>) = sqlx::query_as(

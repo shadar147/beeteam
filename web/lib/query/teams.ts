@@ -14,57 +14,27 @@ export type Filters = {
 type MemberRow = components["schemas"]["MemberRow"];
 type TeamStats = components["schemas"]["TeamStats"];
 
-/** Fetch all members for a team, then apply client-side filters. */
+/** Fetch members for a team. All filtering happens server-side via query params. */
 export function useTeamMembers(teamId: string | null, filters: Filters) {
   return useQuery<MemberRow[]>({
     queryKey: ["team-members", teamId, filters],
     enabled: teamId != null,
     queryFn: async () => {
       const { data, error } = await api.GET("/v1/teams/{id}/members", {
-        params: { path: { id: teamId! } },
+        params: {
+          path: { id: teamId! },
+          query: {
+            q: filters.q || undefined,
+            role: filters.role || undefined,
+            tenure: filters.tenure || undefined,
+            mood: filters.mood || undefined,
+            since: filters.since || undefined,
+            tags: filters.tags && filters.tags.length ? filters.tags.join(",") : undefined,
+          },
+        },
       });
       if (error) throw error;
-
-      let rows = data ?? [];
-
-      if (filters.q) {
-        const q = filters.q.toLowerCase();
-        rows = rows.filter(
-          (m) =>
-            m.name.toLowerCase().includes(q) ||
-            m.role.toLowerCase().includes(q),
-        );
-      }
-
-      if (filters.role) {
-        const role = filters.role.toLowerCase();
-        rows = rows.filter((m) => m.role.toLowerCase().includes(role));
-      }
-
-      if (filters.tags && filters.tags.length > 0) {
-        rows = rows.filter((m) =>
-          filters.tags!.every((t) => m.tags.includes(t)),
-        );
-      }
-
-      if (filters.since === "gt4w") {
-        const cutoff = Date.now() - 28 * 86_400_000;
-        rows = rows.filter(
-          (m) => !m.last_meet || new Date(m.last_meet).getTime() < cutoff,
-        );
-      }
-
-      if (filters.mood) {
-        const threshold = Number(filters.mood);
-        if (!Number.isNaN(threshold)) {
-          rows = rows.filter((m) => {
-            const last = m.mood_trend[m.mood_trend.length - 1];
-            return last !== undefined && last <= threshold;
-          });
-        }
-      }
-
-      return rows;
+      return data ?? [];
     },
   });
 }

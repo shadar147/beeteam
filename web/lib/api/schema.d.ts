@@ -242,7 +242,20 @@ export interface operations {
     };
     list_members: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Search name or role */
+                q?: string;
+                /** @description Exact role */
+                role?: string;
+                /** @description new | mid | sen */
+                tenure?: string;
+                /** @description up | flat | down */
+                mood?: string;
+                /** @description lt1w | lt2w | gt4w */
+                since?: string;
+                /** @description comma-separated tags */
+                tags?: string;
+            };
             header?: never;
             path: {
                 /** @description Team id */
