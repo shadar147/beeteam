@@ -25,9 +25,12 @@ test("search narrows the table", async ({ page }) => {
   await expect(page.getByText("Анна Лебедева")).toBeVisible();
 });
 
-test("row navigates to the profile placeholder", async ({ page }) => {
+test("row navigates to the profile", async ({ page }) => {
   await login(page);
+  // Search to pin the row, so the click target is deterministic (Anna).
+  await page.getByPlaceholder("Поиск по имени или роли").fill("Анна");
   await page.locator('a[href^="/profile/"]').first().click();
   await expect(page).toHaveURL(/\/profile\//);
-  await expect(page.getByText("Профиль появится в следующем срезе")).toBeVisible();
+  // The placeholder is gone — the real profile header renders the member name as an h1.
+  await expect(page.getByRole("heading", { name: "Анна Лебедева" })).toBeVisible({ timeout: 10_000 });
 });
