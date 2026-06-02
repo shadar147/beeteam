@@ -6,7 +6,8 @@ services:
       POSTGRES_PASSWORD: beeteam
       POSTGRES_DB: beeteam
     ports:
-      - "5432:5432"
+      # Host 5442 → container 5432: avoids clashing with a local/work Postgres on 5432.
+      - "5442:5432"
     volumes:
       - ./.docker-data/pg:/var/lib/postgresql/data
     healthcheck:
