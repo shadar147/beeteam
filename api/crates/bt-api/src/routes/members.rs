@@ -56,7 +56,8 @@ pub async fn get_member(
              WHERE m.member_id = tm.id AND m.state = 'done')                       AS last_meet,
           (SELECT min(m.date) FROM meetings m
              WHERE m.member_id = tm.id AND m.state = 'planned' AND m.date >= now()) AS next_meet,
-          (SELECT count(*) FROM meetings m WHERE m.member_id = tm.id)              AS meetings_total
+          (SELECT count(*) FROM meetings m
+             WHERE m.member_id = tm.id AND m.date >= now() - interval '1 year')    AS meetings_total
         FROM team_members tm
         WHERE tm.id = $1
         "#,
