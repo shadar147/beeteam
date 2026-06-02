@@ -85,6 +85,99 @@ pub struct TeamStats {
     pub notes_quarter: i64,
 }
 
+/// Full header for the EmployeeProfile screen.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct MemberDetail {
+    pub id: uuid::Uuid,
+    pub name: String,
+    pub role: String,
+    pub email: String,
+    pub joined: String,
+    pub tz: String,
+    pub hue: i32,
+    pub status: String,
+    pub tags: Vec<String>,
+    pub mood_trend: Vec<i32>,
+    pub last_meet: Option<chrono::DateTime<chrono::Utc>>,
+    pub next_meet: Option<chrono::DateTime<chrono::Utc>>,
+    pub meetings_total: i64,
+}
+
+/// One row in the History feed / calendar.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct MeetingListItem {
+    pub id: uuid::Uuid,
+    pub date: chrono::DateTime<chrono::Utc>,
+    pub state: String,
+    pub mood: Option<String>,
+    pub mood_score: Option<i32>,
+    pub preview: String,
+}
+
+/// Expanded meeting for the MeetingDetailCard.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct MeetingDetail {
+    pub id: uuid::Uuid,
+    pub member_id: uuid::Uuid,
+    pub date: chrono::DateTime<chrono::Utc>,
+    pub state: String,
+    pub duration_min: i32,
+    pub mood: Option<String>,
+    pub mood_score: Option<i32>,
+    pub blockers: Option<String>,
+    pub goals: Option<String>,
+    pub feedback_to: Option<String>,
+    pub feedback_from: Option<String>,
+    pub development: Vec<String>,
+    pub relationships: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct Goal {
+    pub id: uuid::Uuid,
+    pub quarter: String,
+    pub title: String,
+    pub key_result: String,
+    pub progress: i32,
+    pub status: String,
+    pub due: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct DevItem {
+    pub id: uuid::Uuid,
+    pub title: String,
+    pub kind: String,
+    pub status: String,
+    pub note: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct Competency {
+    pub id: uuid::Uuid,
+    pub label: String,
+    pub score: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct GoalsResponse {
+    pub okrs: Vec<Goal>,
+    pub development: Vec<DevItem>,
+    pub competencies: Vec<Competency>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct FileMeta {
+    pub id: uuid::Uuid,
+    pub name: String,
+    pub mime: String,
+    pub kind: String,
+    pub size_bytes: i64,
+    pub meeting_label: Option<String>,
+    pub uploaded_by: String,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
