@@ -198,6 +198,133 @@ pub async fn seed_demo(pool: &PgPool) -> Result<(), sqlx::Error> {
         }
     }
 
+    // ── Goals tab: OKRs (goals) + dev plan (development_items) + competencies ──
+    // Anna is the showcase profile (ported from flows.jsx GoalsTab).
+    let aid = anna_id.expect("seed: Anna must exist");
+
+    // (quarter, title, key_result, progress, status, due_days_from_now)
+    let anna_okrs: [(&str, &str, &str, i32, &str, i64); 3] = [
+        ("Q2 2026", "Ускорить ключевые экраны", "LCP < 1.5s на 90% сессий", 60, "ontrack", 40),
+        ("Q2 2026", "Дизайн-система v2", "Покрыть 80% компонентов токенами", 35, "risk", 25),
+        ("Q1 2026", "Онбординг джунов", "2 ментируемых вышли на self-review", 100, "done", -10),
+    ];
+    for o in anna_okrs.iter() {
+        sqlx::query(
+            "INSERT INTO goals (workspace_id, member_id, quarter, title, key_result, progress, status, due) \
+             VALUES ($1,$2,$3,$4,$5,$6,$7::goal_status,$8)",
+        )
+        .bind(ws_id).bind(aid).bind(o.0).bind(o.1).bind(o.2).bind(o.3).bind(o.4)
+        .bind(now + day * (o.5 as i32))
+        .execute(&mut *tx).await?;
+    }
+
+    // (title, kind, status, note, ord)
+    let anna_dev: [(&str, &str, &str, &str, i32); 5] = [
+        ("Advanced React Performance", "Курс", "in_progress", "Прогресс 60%", 0),
+        ("Доклад на внутреннем митапе", "Доклад", "planned", "Тема: rendering budget", 1),
+        ("Designing Data-Intensive Applications", "Книга", "in_progress", "Глава 4 / 12", 2),
+        ("AWS Solutions Architect", "Сертификат", "planned", "", 3),
+        ("Менторство двух джунов", "Менторство", "done", "Q1 завершён", 4),
+    ];
+    for d in anna_dev.iter() {
+        sqlx::query(
+            "INSERT INTO development_items (workspace_id, member_id, title, kind, status, note, ord) \
+             VALUES ($1,$2,$3,$4,$5,$6,$7)",
+        )
+        .bind(ws_id).bind(aid).bind(d.0).bind(d.1).bind(d.2).bind(opt(d.3)).bind(d.4)
+        .execute(&mut *tx).await?;
+    }
+
+    // (label, score, ord) — competency bars 0..10
+    let anna_comp: [(&str, i32, i32); 5] = [
+        ("Frontend архитектура", 9, 0),
+        ("Коммуникация", 8, 1),
+        ("Менторство", 8, 2),
+        ("Системный дизайн", 6, 3),
+        ("Бэкенд", 5, 4),
+    ];
+    for c in anna_comp.iter() {
+        sqlx::query(
+            "INSERT INTO competencies (workspace_id, member_id, label, score, ord) \
+             VALUES ($1,$2,$3,$4,$5)",
+        )
+        .bind(ws_id).bind(aid).bind(c.0).bind(c.1).bind(c.2)
+        .execute(&mut *tx).await?;
+    }
+
+    // Anna's files (one linked to her most recent done meeting → meeting_label).
+    let anna_last_done: Option<(uuid::Uuid,)> = sqlx::query_as(
+        "SELECT id FROM meetings WHERE member_id = $1 AND state = 'done' ORDER BY date DESC LIMIT 1",
+    ).bind(aid).fetch_optional(&mut *tx).await?;
+    let anna_meeting_id = anna_last_done.map(|r| r.0);
+
+    // (name, mime, kind, size_bytes, uploaded_by, days_ago, link_to_meeting)
+    let anna_files: [(&str, &str, &str, i64, &str, i64, bool); 7] = [
+        ("Итоги 1-2-1.pdf", "application/pdf", "pdf", 184_320, "Евгений Глебов", 7, true),
+        ("План развития Q2.docx", "application/vnd.openxmlformats", "doc", 41_984, "Анна Лебедева", 9, false),
+        ("Скрин дашборда.png", "image/png", "img", 612_400, "Анна Лебедева", 12, false),
+        ("Метрики LCP.xlsx", "application/vnd.ms-excel", "sheet", 28_672, "Анна Лебедева", 14, false),
+        ("Демо рефактора.mp4", "video/mp4", "video", 8_388_608, "Анна Лебедева", 20, false),
+        ("Архитектура DS v2.pdf", "application/pdf", "pdf", 256_000, "Анна Лебедева", 28, false),
+        ("Заметки ретро.docx", "application/vnd.openxmlformats", "doc", 18_944, "Анна Лебедева", 33, false),
+    ];
+    for f in anna_files.iter() {
+        let meeting_bind = if f.6 { anna_meeting_id } else { None };
+        sqlx::query(
+            "INSERT INTO files (workspace_id, member_id, meeting_id, name, mime, kind, size_bytes, storage_key, uploaded_by, created_at) \
+             VALUES ($1,$2,$3,$4,$5,$6::file_kind,$7,$8,$9,$10)",
+        )
+        .bind(ws_id).bind(aid).bind(meeting_bind)
+        .bind(f.0).bind(f.1).bind(f.2).bind(f.3)
+        .bind(format!("seed/{}", f.0))
+        .bind(f.4).bind(now - day * (f.5 as i32))
+        .execute(&mut *tx).await?;
+    }
+
+    // ── Base set for the other 7 members so their tabs aren't empty ──
+    let base_comp: [(&str, i32); 5] = [
+        ("Профессионализм", 7), ("Коммуникация", 6), ("Командная работа", 7),
+        ("Инициатива", 5), ("Развитие", 6),
+    ];
+    for (mid, _status) in member_ids.iter() {
+        if Some(*mid) == anna_id { continue; }
+
+        sqlx::query(
+            "INSERT INTO goals (workspace_id, member_id, quarter, title, key_result, progress, status, due) \
+             VALUES ($1,$2,'Q2 2026','Цель квартала','Ключевой результат',45,'ontrack'::goal_status,$3)",
+        )
+        .bind(ws_id).bind(mid).bind(now + day * 30)
+        .execute(&mut *tx).await?;
+
+        sqlx::query(
+            "INSERT INTO development_items (workspace_id, member_id, title, kind, status, note, ord) \
+             VALUES ($1,$2,'Внутренний курс','Курс','in_progress','Прогресс 40%',0)",
+        )
+        .bind(ws_id).bind(mid).execute(&mut *tx).await?;
+
+        for (i, c) in base_comp.iter().enumerate() {
+            sqlx::query(
+                "INSERT INTO competencies (workspace_id, member_id, label, score, ord) \
+                 VALUES ($1,$2,$3,$4,$5)",
+            )
+            .bind(ws_id).bind(mid).bind(c.0).bind(c.1).bind(i as i32)
+            .execute(&mut *tx).await?;
+        }
+
+        for (i, (name, mime, kind, size)) in [
+            ("Заметки 1-2-1.pdf", "application/pdf", "pdf", 96_000_i64),
+            ("План на квартал.docx", "application/vnd.openxmlformats", "doc", 22_528_i64),
+        ].iter().enumerate() {
+            sqlx::query(
+                "INSERT INTO files (workspace_id, member_id, name, mime, kind, size_bytes, storage_key, uploaded_by, created_at) \
+                 VALUES ($1,$2,$3,$4,$5::file_kind,$6,$7,'Евгений Глебов',$8)",
+            )
+            .bind(ws_id).bind(mid).bind(name).bind(mime).bind(kind).bind(size)
+            .bind(format!("seed/{name}")).bind(now - day * (10 * (i as i32 + 1)))
+            .execute(&mut *tx).await?;
+        }
+    }
+
     tx.commit().await?;
     Ok(())
 }
@@ -240,6 +367,46 @@ mod tests {
             "SELECT count(*) FROM team_members WHERE joined_date IS NOT NULL")
             .fetch_one(&pool).await.unwrap();
         assert_eq!(dated.0, 8);
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn seed_populates_goals_files_dev_competencies(pool: PgPool) {
+        seed_demo(&pool).await.unwrap();
+
+        let anna: (uuid::Uuid,) =
+            sqlx::query_as("SELECT id FROM team_members WHERE name = 'Анна Лебедева'")
+                .fetch_one(&pool).await.unwrap();
+
+        let okrs: (i64,) = sqlx::query_as("SELECT count(*) FROM goals WHERE member_id = $1")
+            .bind(anna.0).fetch_one(&pool).await.unwrap();
+        assert_eq!(okrs.0, 3, "Anna OKRs");
+
+        let dev: (i64,) =
+            sqlx::query_as("SELECT count(*) FROM development_items WHERE member_id = $1")
+                .bind(anna.0).fetch_one(&pool).await.unwrap();
+        assert_eq!(dev.0, 5, "Anna dev-items");
+
+        let comp: (i64,) =
+            sqlx::query_as("SELECT count(*) FROM competencies WHERE member_id = $1")
+                .bind(anna.0).fetch_one(&pool).await.unwrap();
+        assert_eq!(comp.0, 5, "Anna competencies");
+
+        let files: (i64,) = sqlx::query_as("SELECT count(*) FROM files WHERE member_id = $1")
+            .bind(anna.0).fetch_one(&pool).await.unwrap();
+        assert_eq!(files.0, 7, "Anna files");
+
+        let bare: (i64,) = sqlx::query_as(
+            "SELECT count(*) FROM team_members tm \
+             WHERE NOT EXISTS (SELECT 1 FROM goals g WHERE g.member_id = tm.id) \
+                OR NOT EXISTS (SELECT 1 FROM competencies c WHERE c.member_id = tm.id) \
+                OR NOT EXISTS (SELECT 1 FROM files f WHERE f.member_id = tm.id)",
+        ).fetch_one(&pool).await.unwrap();
+        assert_eq!(bare.0, 0, "no member has an empty Goals or Files tab");
+
+        let linked: (i64,) = sqlx::query_as(
+            "SELECT count(*) FROM files WHERE member_id = $1 AND meeting_id IS NOT NULL",
+        ).bind(anna.0).fetch_one(&pool).await.unwrap();
+        assert!(linked.0 >= 1, "at least one Anna file linked to a meeting");
     }
 
     #[sqlx::test(migrations = "./migrations")]
