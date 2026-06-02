@@ -1,6 +1,6 @@
 use axum::extract::{Path, State};
 use axum::Json;
-use bt_domain::MemberDetail;
+use bt_domain::{MeetingListItem, MemberDetail};
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -81,6 +81,57 @@ pub async fn get_member(
         next_meet: r.11,
         meetings_total: r.12,
     }))
+}
+
+#[utoipa::path(
+    get,
+    path = "/v1/members/{id}/meetings",
+    params(("id" = uuid::Uuid, Path, description = "Member id")),
+    responses(
+        (status = 200, description = "All meetings, newest first", body = [MeetingListItem]),
+        (status = 403, description = "Member not on the caller's team"),
+    )
+)]
+pub async fn list_member_meetings(
+    State(state): State<AppState>,
+    axum::Extension(auth): axum::Extension<AuthUser>,
+    Path(member_id): Path<Uuid>,
+) -> AppResult<Json<Vec<MeetingListItem>>> {
+    require_member_access(&auth, member_id, &state.pool).await?;
+
+    let rows: Vec<(
+        uuid::Uuid, chrono::DateTime<chrono::Utc>, String,
+        Option<String>, Option<i32>, Option<String>, Option<String>,
+    )> = sqlx::query_as(
+        "SELECT id, date, state::text, mood, mood_score, blockers, goals \
+         FROM meetings WHERE member_id = $1 ORDER BY date DESC",
+    )
+    .bind(member_id)
+    .fetch_all(&state.pool)
+    .await?;
+
+    let out = rows
+        .into_iter()
+        .map(|r| {
+            let preview = first_nonempty(&[r.5.as_deref(), r.6.as_deref()])
+                .map(str::to_string)
+                .unwrap_or_else(|| state_hint(&r.2));
+            MeetingListItem { id: r.0, date: r.1, state: r.2, mood: r.3, mood_score: r.4, preview }
+        })
+        .collect();
+    Ok(Json(out))
+}
+
+fn first_nonempty<'a>(opts: &[Option<&'a str>]) -> Option<&'a str> {
+    opts.iter().flatten().copied().find(|s| !s.trim().is_empty())
+}
+
+fn state_hint(state: &str) -> String {
+    match state {
+        "planned" => "Запланирована".to_string(),
+        "miss" => "Пропущена".to_string(),
+        _ => "Без заметок".to_string(),
+    }
 }
 
 #[cfg(test)]
@@ -191,6 +242,59 @@ mod tests {
         let status = resp.status();
         let bytes = resp.into_body().collect().await.unwrap().to_bytes();
         (status, serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null))
+    }
+
+    async fn seed_meeting(
+        pool: &sqlx::PgPool, member_id: uuid::Uuid, state: &str, notes: bool,
+    ) -> uuid::Uuid {
+        let ws: (uuid::Uuid,) = sqlx::query_as(
+            "SELECT workspace_id FROM team_members WHERE id = $1",
+        ).bind(member_id).fetch_one(pool).await.unwrap();
+        let (blockers, goals) = if notes {
+            (Some("Блокер: флака в CI"), Some("Цель: вынести модуль"))
+        } else { (None, None) };
+        let row: (uuid::Uuid,) = sqlx::query_as(
+            "INSERT INTO meetings \
+             (workspace_id, member_id, date, state, duration_min, mood, mood_score, \
+              blockers, goals, feedback_to, feedback_from, development, relationships) \
+             VALUES ($1,$2,now() - interval '7 days',$3::meeting_state,45,'🙂',8,\
+                     $4,$5,'Хвалю за рефактор','Спасибо за поддержку',\
+                     ARRAY['Курс по перфу'],'Тёплые') RETURNING id",
+        )
+        .bind(ws.0).bind(member_id).bind(state).bind(blockers).bind(goals)
+        .fetch_one(pool).await.unwrap();
+        row.0
+    }
+
+    #[sqlx::test(migrations = "../bt-db/migrations")]
+    async fn member_meetings_list_ordered_with_preview(pool: sqlx::PgPool) {
+        let (token_a, anna, _, _) = seed_two_teams(&pool).await;
+        seed_meeting(&pool, anna, "done", true).await;
+        let (status, json) = get(pool, &token_a, &format!("/v1/members/{anna}/meetings")).await;
+        assert_eq!(status, StatusCode::OK);
+        let arr = json.as_array().unwrap();
+        assert_eq!(arr.len(), 1);
+        assert_eq!(arr[0]["preview"], "Блокер: флака в CI");
+    }
+
+    #[sqlx::test(migrations = "../bt-db/migrations")]
+    async fn meeting_detail_returns_all_note_fields(pool: sqlx::PgPool) {
+        let (token_a, anna, _, _) = seed_two_teams(&pool).await;
+        let mid = seed_meeting(&pool, anna, "done", true).await;
+        let (status, json) = get(pool, &token_a, &format!("/v1/meetings/{mid}")).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(json["blockers"], "Блокер: флака в CI");
+        assert_eq!(json["feedback_to"], "Хвалю за рефактор");
+        assert_eq!(json["development"][0], "Курс по перфу");
+        assert_eq!(json["relationships"], "Тёплые");
+    }
+
+    #[sqlx::test(migrations = "../bt-db/migrations")]
+    async fn meeting_detail_foreign_member_is_forbidden(pool: sqlx::PgPool) {
+        let (_token_a, anna, token_b, _bob) = seed_two_teams(&pool).await;
+        let mid = seed_meeting(&pool, anna, "done", true).await;
+        let (status, _) = get(pool, &token_b, &format!("/v1/meetings/{mid}")).await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
     }
 
     #[sqlx::test(migrations = "../bt-db/migrations")]
