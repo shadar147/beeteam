@@ -320,7 +320,7 @@ pub async fn seed_demo(pool: &PgPool) -> Result<(), sqlx::Error> {
                  VALUES ($1,$2,$3,$4,$5::file_kind,$6,$7,'Евгений Глебов',$8)",
             )
             .bind(ws_id).bind(mid).bind(name).bind(mime).bind(kind).bind(size)
-            .bind(format!("seed/{name}")).bind(now - day * (10 * (i as i32 + 1)))
+            .bind(format!("seed/{mid}/{name}")).bind(now - day * (10 * (i as i32 + 1)))
             .execute(&mut *tx).await?;
         }
     }
@@ -398,6 +398,7 @@ mod tests {
         let bare: (i64,) = sqlx::query_as(
             "SELECT count(*) FROM team_members tm \
              WHERE NOT EXISTS (SELECT 1 FROM goals g WHERE g.member_id = tm.id) \
+                OR NOT EXISTS (SELECT 1 FROM development_items d WHERE d.member_id = tm.id) \
                 OR NOT EXISTS (SELECT 1 FROM competencies c WHERE c.member_id = tm.id) \
                 OR NOT EXISTS (SELECT 1 FROM files f WHERE f.member_id = tm.id)",
         ).fetch_one(&pool).await.unwrap();
