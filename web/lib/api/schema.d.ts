@@ -52,6 +52,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/meetings/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_meeting"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/members/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_member"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/members/{id}/files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_member_files"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/members/{id}/goals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_member_goals"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/members/{id}/meetings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_member_meetings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/teams/{id}/members": {
         parameters: {
             query?: never;
@@ -88,6 +168,51 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        Competency: {
+            /** Format: uuid */
+            id: string;
+            label: string;
+            /** Format: int32 */
+            score: number;
+        };
+        DevItem: {
+            /** Format: uuid */
+            id: string;
+            kind: string;
+            note?: string | null;
+            status: string;
+            title: string;
+        };
+        FileMeta: {
+            /** Format: date-time */
+            created_at: string;
+            /** Format: uuid */
+            id: string;
+            kind: string;
+            meeting_label?: string | null;
+            mime: string;
+            name: string;
+            /** Format: int64 */
+            size_bytes: number;
+            uploaded_by: string;
+        };
+        Goal: {
+            /** Format: date-time */
+            due: string;
+            /** Format: uuid */
+            id: string;
+            key_result: string;
+            /** Format: int32 */
+            progress: number;
+            quarter: string;
+            status: string;
+            title: string;
+        };
+        GoalsResponse: {
+            competencies: components["schemas"]["Competency"][];
+            development: components["schemas"]["DevItem"][];
+            okrs: components["schemas"]["Goal"][];
+        };
         /** @description Liveness/readiness payload returned by `GET /v1/health`. */
         Health: {
             status: string;
@@ -112,6 +237,60 @@ export interface components {
             role: string;
             /** Format: uuid */
             team_id?: string | null;
+        };
+        /** @description Expanded meeting for the MeetingDetailCard. */
+        MeetingDetail: {
+            blockers?: string | null;
+            /** Format: date-time */
+            date: string;
+            development: string[];
+            /** Format: int32 */
+            duration_min: number;
+            feedback_from?: string | null;
+            feedback_to?: string | null;
+            goals?: string | null;
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            member_id: string;
+            mood?: string | null;
+            /** Format: int32 */
+            mood_score?: number | null;
+            relationships?: string | null;
+            state: string;
+        };
+        /** @description One row in the History feed / calendar. */
+        MeetingListItem: {
+            /** Format: date-time */
+            date: string;
+            /** Format: uuid */
+            id: string;
+            mood?: string | null;
+            /** Format: int32 */
+            mood_score?: number | null;
+            preview: string;
+            state: string;
+        };
+        /** @description Full header for the EmployeeProfile screen. */
+        MemberDetail: {
+            email: string;
+            /** Format: int32 */
+            hue: number;
+            /** Format: uuid */
+            id: string;
+            joined: string;
+            /** Format: date-time */
+            last_meet?: string | null;
+            /** Format: int64 */
+            meetings_total: number;
+            mood_trend: number[];
+            name: string;
+            /** Format: date-time */
+            next_meet?: string | null;
+            role: string;
+            status: string;
+            tags: string[];
+            tz: string;
         };
         /** @description A team member as shown in the TeamList table. */
         MemberRow: {
@@ -237,6 +416,170 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Health"];
                 };
+            };
+        };
+    };
+    get_meeting: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Meeting id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Meeting detail (all note fields) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeetingDetail"];
+                };
+            };
+            /** @description Meeting's member not on the caller's team */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such meeting */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_member: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Member id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Member detail (profile header) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemberDetail"];
+                };
+            };
+            /** @description Member not on the caller's team */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such member */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_member_files: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Member id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description File metadata (read-only) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileMeta"][];
+                };
+            };
+            /** @description Member not on the caller's team */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_member_goals: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Member id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OKRs + dev plan + competencies */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoalsResponse"];
+                };
+            };
+            /** @description Member not on the caller's team */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_member_meetings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Member id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description All meetings, newest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeetingListItem"][];
+                };
+            };
+            /** @description Member not on the caller's team */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
