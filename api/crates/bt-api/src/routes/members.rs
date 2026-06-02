@@ -1,6 +1,6 @@
 use axum::extract::{Path, State};
 use axum::Json;
-use bt_domain::{MeetingListItem, MemberDetail};
+use bt_domain::{Competency, DevItem, FileMeta, Goal, GoalsResponse, MeetingListItem, MemberDetail};
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -117,6 +117,97 @@ pub async fn list_member_meetings(
                 .map(str::to_string)
                 .unwrap_or_else(|| state_hint(&r.2));
             MeetingListItem { id: r.0, date: r.1, state: r.2, mood: r.3, mood_score: r.4, preview }
+        })
+        .collect();
+    Ok(Json(out))
+}
+
+#[utoipa::path(
+    get,
+    path = "/v1/members/{id}/goals",
+    params(("id" = uuid::Uuid, Path, description = "Member id")),
+    responses(
+        (status = 200, description = "OKRs + dev plan + competencies", body = GoalsResponse),
+        (status = 403, description = "Member not on the caller's team"),
+    )
+)]
+pub async fn get_member_goals(
+    State(state): State<AppState>,
+    axum::Extension(auth): axum::Extension<AuthUser>,
+    Path(member_id): Path<Uuid>,
+) -> AppResult<Json<GoalsResponse>> {
+    require_member_access(&auth, member_id, &state.pool).await?;
+
+    let okrs: Vec<Goal> = sqlx::query_as::<_, (
+        uuid::Uuid, String, String, String, i32, String, chrono::DateTime<chrono::Utc>,
+    )>(
+        "SELECT id, quarter, title, key_result, progress, status::text, due \
+         FROM goals WHERE member_id = $1 ORDER BY due",
+    )
+    .bind(member_id)
+    .fetch_all(&state.pool).await?
+    .into_iter()
+    .map(|r| Goal { id: r.0, quarter: r.1, title: r.2, key_result: r.3, progress: r.4, status: r.5, due: r.6 })
+    .collect();
+
+    let development: Vec<DevItem> = sqlx::query_as::<_, (
+        uuid::Uuid, String, String, String, Option<String>,
+    )>(
+        "SELECT id, title, kind, status, note FROM development_items \
+         WHERE member_id = $1 ORDER BY ord",
+    )
+    .bind(member_id)
+    .fetch_all(&state.pool).await?
+    .into_iter()
+    .map(|r| DevItem { id: r.0, title: r.1, kind: r.2, status: r.3, note: r.4 })
+    .collect();
+
+    let competencies: Vec<Competency> = sqlx::query_as::<_, (uuid::Uuid, String, i32)>(
+        "SELECT id, label, score FROM competencies WHERE member_id = $1 ORDER BY ord",
+    )
+    .bind(member_id)
+    .fetch_all(&state.pool).await?
+    .into_iter()
+    .map(|r| Competency { id: r.0, label: r.1, score: r.2 })
+    .collect();
+
+    Ok(Json(GoalsResponse { okrs, development, competencies }))
+}
+
+#[utoipa::path(
+    get,
+    path = "/v1/members/{id}/files",
+    params(("id" = uuid::Uuid, Path, description = "Member id")),
+    responses(
+        (status = 200, description = "File metadata (read-only)", body = [FileMeta]),
+        (status = 403, description = "Member not on the caller's team"),
+    )
+)]
+pub async fn list_member_files(
+    State(state): State<AppState>,
+    axum::Extension(auth): axum::Extension<AuthUser>,
+    Path(member_id): Path<Uuid>,
+) -> AppResult<Json<Vec<FileMeta>>> {
+    require_member_access(&auth, member_id, &state.pool).await?;
+
+    let rows: Vec<(
+        uuid::Uuid, String, String, String, i64, String,
+        chrono::DateTime<chrono::Utc>, Option<chrono::DateTime<chrono::Utc>>,
+    )> = sqlx::query_as(
+        "SELECT f.id, f.name, f.mime, f.kind::text, f.size_bytes, f.uploaded_by, f.created_at, m.date \
+         FROM files f LEFT JOIN meetings m ON m.id = f.meeting_id \
+         WHERE f.member_id = $1 ORDER BY f.created_at DESC",
+    )
+    .bind(member_id)
+    .fetch_all(&state.pool)
+    .await?;
+
+    let out = rows
+        .into_iter()
+        .map(|r| FileMeta {
+            id: r.0, name: r.1, mime: r.2, kind: r.3, size_bytes: r.4, uploaded_by: r.5,
+            created_at: r.6,
+            meeting_label: r.7.map(|d| format!("1-2-1 от {}", d.format("%d.%m.%Y"))),
         })
         .collect();
     Ok(Json(out))
@@ -324,5 +415,60 @@ mod tests {
         let arr = json.as_array().unwrap();
         assert_eq!(arr.len(), 1);
         assert_eq!(arr[0]["preview"], "Запланирована");
+    }
+
+    #[sqlx::test(migrations = "../bt-db/migrations")]
+    async fn goals_returns_three_sections(pool: sqlx::PgPool) {
+        let (token_a, anna, _, _) = seed_two_teams(&pool).await;
+        let ws: (uuid::Uuid,) =
+            sqlx::query_as("SELECT workspace_id FROM team_members WHERE id = $1")
+                .bind(anna).fetch_one(&pool).await.unwrap();
+        sqlx::query(
+            "INSERT INTO goals (workspace_id, member_id, quarter, title, key_result, progress, status, due) \
+             VALUES ($1,$2,'Q2','T','KR',60,'ontrack'::goal_status, now())",
+        ).bind(ws.0).bind(anna).execute(&pool).await.unwrap();
+        sqlx::query(
+            "INSERT INTO development_items (workspace_id, member_id, title, kind, status, note, ord) \
+             VALUES ($1,$2,'Курс','Курс','in_progress','60%',0)",
+        ).bind(ws.0).bind(anna).execute(&pool).await.unwrap();
+        sqlx::query(
+            "INSERT INTO competencies (workspace_id, member_id, label, score, ord) \
+             VALUES ($1,$2,'Frontend',9,0)",
+        ).bind(ws.0).bind(anna).execute(&pool).await.unwrap();
+
+        let (status, json) = get(pool, &token_a, &format!("/v1/members/{anna}/goals")).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(json["okrs"].as_array().unwrap().len(), 1);
+        assert_eq!(json["development"].as_array().unwrap().len(), 1);
+        assert_eq!(json["competencies"].as_array().unwrap().len(), 1);
+        assert_eq!(json["competencies"][0]["score"], 9);
+    }
+
+    #[sqlx::test(migrations = "../bt-db/migrations")]
+    async fn files_includes_meeting_label(pool: sqlx::PgPool) {
+        let (token_a, anna, _, _) = seed_two_teams(&pool).await;
+        let mid = seed_meeting(&pool, anna, "done", true).await;
+        let ws: (uuid::Uuid,) =
+            sqlx::query_as("SELECT workspace_id FROM team_members WHERE id = $1")
+                .bind(anna).fetch_one(&pool).await.unwrap();
+        sqlx::query(
+            "INSERT INTO files (workspace_id, member_id, meeting_id, name, mime, kind, size_bytes, storage_key, uploaded_by) \
+             VALUES ($1,$2,$3,'Итоги.pdf','application/pdf','pdf'::file_kind,1024,'k','Лид')",
+        ).bind(ws.0).bind(anna).bind(mid).execute(&pool).await.unwrap();
+
+        let (status, json) = get(pool, &token_a, &format!("/v1/members/{anna}/files")).await;
+        assert_eq!(status, StatusCode::OK);
+        let arr = json.as_array().unwrap();
+        assert_eq!(arr.len(), 1);
+        assert!(arr[0]["meeting_label"].as_str().unwrap().starts_with("1-2-1 от "));
+    }
+
+    #[sqlx::test(migrations = "../bt-db/migrations")]
+    async fn goals_and_files_foreign_is_forbidden(pool: sqlx::PgPool) {
+        let (_, anna, token_b, _) = seed_two_teams(&pool).await;
+        let (s1, _) = get(pool.clone(), &token_b, &format!("/v1/members/{anna}/goals")).await;
+        let (s2, _) = get(pool, &token_b, &format!("/v1/members/{anna}/files")).await;
+        assert_eq!(s1, StatusCode::FORBIDDEN);
+        assert_eq!(s2, StatusCode::FORBIDDEN);
     }
 }

@@ -36,6 +36,8 @@ pub fn build_router(state: AppState) -> Router {
         .route("/v1/teams/:id/stats", get(routes::teams::team_stats))
         .route("/v1/members/:id", get(routes::members::get_member))
         .route("/v1/members/:id/meetings", get(routes::members::list_member_meetings))
+        .route("/v1/members/:id/goals", get(routes::members::get_member_goals))
+        .route("/v1/members/:id/files", get(routes::members::list_member_files))
         .route("/v1/meetings/:id", get(routes::meetings::get_meeting))
         .route_layer(axum::middleware::from_fn_with_state(state.clone(), require_auth));
 

@@ -8,6 +8,11 @@ use utoipa::OpenApi;
         crate::routes::auth::me,
         crate::routes::teams::list_members,
         crate::routes::teams::team_stats,
+        crate::routes::members::get_member,
+        crate::routes::members::list_member_meetings,
+        crate::routes::members::get_member_goals,
+        crate::routes::members::list_member_files,
+        crate::routes::meetings::get_meeting,
     ),
     components(schemas(
         bt_domain::Health,
@@ -17,6 +22,14 @@ use utoipa::OpenApi;
         bt_domain::MeResponse,
         bt_domain::MemberRow,
         bt_domain::TeamStats,
+        bt_domain::MemberDetail,
+        bt_domain::MeetingListItem,
+        bt_domain::MeetingDetail,
+        bt_domain::Goal,
+        bt_domain::DevItem,
+        bt_domain::Competency,
+        bt_domain::GoalsResponse,
+        bt_domain::FileMeta,
     )),
     info(title = "BeeTeam API", version = "0.1.0")
 )]
