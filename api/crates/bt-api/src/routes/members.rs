@@ -313,4 +313,16 @@ mod tests {
         let (status, _) = get(pool, &token_a, &format!("/v1/members/{bob}")).await;
         assert_eq!(status, StatusCode::FORBIDDEN);
     }
+
+    #[sqlx::test(migrations = "../bt-db/migrations")]
+    async fn member_meetings_preview_falls_back_to_state_hint(pool: sqlx::PgPool) {
+        let (token_a, anna, _, _) = seed_two_teams(&pool).await;
+        // A planned meeting with no blockers/goals → preview is the state hint.
+        seed_meeting(&pool, anna, "planned", false).await;
+        let (status, json) = get(pool, &token_a, &format!("/v1/members/{anna}/meetings")).await;
+        assert_eq!(status, StatusCode::OK);
+        let arr = json.as_array().unwrap();
+        assert_eq!(arr.len(), 1);
+        assert_eq!(arr[0]["preview"], "Запланирована");
+    }
 }
