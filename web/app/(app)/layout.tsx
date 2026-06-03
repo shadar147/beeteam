@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/auth";
 import { Sidebar } from "@/components/Sidebar";
+import { MeetingDrawerHost } from "@/components/MeetingDrawerHost";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await getSessionUser();
@@ -14,6 +15,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     <div className="flex min-h-screen bg-bg text-ink">
       <Sidebar user={user} />
       <main className="flex-1 min-w-0">{children}</main>
+      <MeetingDrawerHost />
     </div>
   );
 }
