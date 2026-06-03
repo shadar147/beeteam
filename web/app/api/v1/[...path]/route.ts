@@ -15,6 +15,11 @@ async function proxy(req: NextRequest, path: string[]) {
     req.method === "GET" || req.method === "HEAD" ? undefined : await req.text();
 
   const res = await fetch(url, { method: req.method, headers, body, cache: "no-store" });
+  // 204 No Content / 304 Not Modified must not carry a body — passing one to the
+  // NextResponse/Response constructor throws "Invalid response status code".
+  if (res.status === 204 || res.status === 304) {
+    return new NextResponse(null, { status: res.status });
+  }
   const text = await res.text();
   return new NextResponse(text, {
     status: res.status,
