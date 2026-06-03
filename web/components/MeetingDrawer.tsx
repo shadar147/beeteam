@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useReducer } from "react";
+import { useEffect, useReducer, useState } from "react";
 import { useMeeting } from "@/lib/query/profile";
 import {
   useTemplate, useMeetingAutosave, useCompleteMeeting, useDeleteMeeting,
@@ -35,6 +35,7 @@ export function MeetingDrawer({ meetingId, onClose }: { meetingId: string; onClo
   const del = useDeleteMeeting();
 
   const [form, dispatch] = useReducer(meetingFormReducer, EMPTY);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   // Seed the form once the meeting loads.
   useEffect(() => {
@@ -108,12 +109,22 @@ export function MeetingDrawer({ meetingId, onClose }: { meetingId: string; onClo
           )}
         </div>
 
+        {actionError && (
+          <div className="border-t border-miss/30 bg-miss-soft px-5 py-2 text-[12px] text-miss">{actionError}</div>
+        )}
         <footer className="flex gap-2 border-t border-line px-5 py-3">
           {!done && (
             <button
               type="button"
               className="rounded-md bg-brand px-3 py-1.5 text-[13px] font-medium text-brand-text"
-              onClick={() => { autosave.flush(); complete.mutate(meetingId, { onSuccess: onClose }); }}
+              onClick={() => {
+                setActionError(null);
+                autosave.flush();
+                complete.mutate(meetingId, {
+                  onSuccess: onClose,
+                  onError: () => setActionError("Не удалось завершить встречу"),
+                });
+              }}
             >
               Завершить
             </button>
@@ -123,7 +134,13 @@ export function MeetingDrawer({ meetingId, onClose }: { meetingId: string; onClo
               type="button"
               className="rounded-md border border-line px-3 py-1.5 text-[13px] text-ink-2"
               onClick={() => {
-                if (confirm("Удалить встречу?")) del.mutate({ id: meetingId, memberId }, { onSuccess: onClose });
+                if (confirm("Удалить встречу?")) {
+                  setActionError(null);
+                  del.mutate({ id: meetingId, memberId }, {
+                    onSuccess: onClose,
+                    onError: () => setActionError("Не удалось удалить встречу"),
+                  });
+                }
               }}
             >
               Отменить
