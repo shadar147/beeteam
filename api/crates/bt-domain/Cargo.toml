@@ -8,6 +8,7 @@ serde = { workspace = true }
 utoipa = { workspace = true }
 chrono = { workspace = true }
 uuid = { workspace = true }
+validator = { workspace = true }
 
 [dev-dependencies]
 serde_json = { workspace = true }

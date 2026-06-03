@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
+use validator::Validate;
 
 /// Liveness/readiness payload returned by `GET /v1/health`.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema, PartialEq)]
@@ -130,6 +131,7 @@ pub struct MeetingDetail {
     pub feedback_from: Option<String>,
     pub development: Vec<String>,
     pub relationships: Option<String>,
+    pub template_id: Option<uuid::Uuid>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -176,6 +178,51 @@ pub struct FileMeta {
     pub meeting_label: Option<String>,
     pub uploaded_by: String,
     pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+/// Create a new (planned) 1-2-1 for a member.
+#[derive(Debug, Clone, Deserialize, ToSchema, Validate)]
+pub struct CreateMeetingRequest {
+    pub member_id: uuid::Uuid,
+    /// Defaults to now() when omitted.
+    pub date: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+/// Autosave patch — every field optional; provided fields are written.
+#[derive(Debug, Clone, Deserialize, ToSchema, Validate)]
+pub struct UpdateMeetingRequest {
+    pub date: Option<chrono::DateTime<chrono::Utc>>,
+    #[validate(range(min = 1, message = "duration_min must be positive"))]
+    pub duration_min: Option<i32>,
+    pub mood: Option<String>,
+    #[validate(range(min = 1, max = 10, message = "mood_score must be 1..10"))]
+    pub mood_score: Option<i32>,
+    pub blockers: Option<String>,
+    pub goals: Option<String>,
+    pub feedback_to: Option<String>,
+    pub feedback_from: Option<String>,
+    pub development: Option<Vec<String>>,
+    pub relationships: Option<String>,
+}
+
+/// A meeting form field definition (from a template), for rendering the drawer.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct FieldDef {
+    pub id: uuid::Uuid,
+    pub ord: i32,
+    pub kind: String,
+    pub title: String,
+    pub required: bool,
+    pub placeholder: Option<String>,
+    pub hint: Option<String>,
+    pub options: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct TemplateDetail {
+    pub id: uuid::Uuid,
+    pub name: String,
+    pub fields: Vec<FieldDef>,
 }
 
 #[cfg(test)]
