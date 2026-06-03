@@ -52,6 +52,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/meetings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["create_meeting"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/meetings/{id}": {
         parameters: {
             query?: never;
@@ -62,6 +78,22 @@ export interface paths {
         get: operations["get_meeting"];
         put?: never;
         post?: never;
+        delete: operations["delete_meeting"];
+        options?: never;
+        head?: never;
+        patch: operations["update_meeting"];
+        trace?: never;
+    };
+    "/v1/meetings/{id}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["complete_meeting"];
         delete?: never;
         options?: never;
         head?: never;
@@ -164,6 +196,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/templates/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_template"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -175,12 +223,35 @@ export interface components {
             /** Format: int32 */
             score: number;
         };
+        /** @description Create a new (planned) 1-2-1 for a member. */
+        CreateMeetingRequest: {
+            /**
+             * Format: date-time
+             * @description Defaults to now() when omitted.
+             */
+            date?: string | null;
+            /** Format: uuid */
+            member_id: string;
+        };
         DevItem: {
             /** Format: uuid */
             id: string;
             kind: string;
             note?: string | null;
             status: string;
+            title: string;
+        };
+        /** @description A meeting form field definition (from a template), for rendering the drawer. */
+        FieldDef: {
+            hint?: string | null;
+            /** Format: uuid */
+            id: string;
+            kind: string;
+            options: string[];
+            /** Format: int32 */
+            ord: number;
+            placeholder?: string | null;
+            required: boolean;
             title: string;
         };
         FileMeta: {
@@ -258,6 +329,8 @@ export interface components {
             mood_score?: number | null;
             relationships?: string | null;
             state: string;
+            /** Format: uuid */
+            template_id?: string | null;
         };
         /** @description One row in the History feed / calendar. */
         MeetingListItem: {
@@ -323,6 +396,28 @@ export interface components {
             overdue: number;
             /** Format: int64 */
             this_week: number;
+        };
+        TemplateDetail: {
+            fields: components["schemas"]["FieldDef"][];
+            /** Format: uuid */
+            id: string;
+            name: string;
+        };
+        /** @description Autosave patch — every field optional; provided fields are written. */
+        UpdateMeetingRequest: {
+            blockers?: string | null;
+            /** Format: date-time */
+            date?: string | null;
+            development?: string[] | null;
+            /** Format: int32 */
+            duration_min?: number | null;
+            feedback_from?: string | null;
+            feedback_to?: string | null;
+            goals?: string | null;
+            mood?: string | null;
+            /** Format: int32 */
+            mood_score?: number | null;
+            relationships?: string | null;
         };
         /** @description Public user shape returned to the client. */
         UserDto: {
@@ -419,6 +514,37 @@ export interface operations {
             };
         };
     };
+    create_meeting: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateMeetingRequest"];
+            };
+        };
+        responses: {
+            /** @description Created planned meeting */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeetingDetail"];
+                };
+            };
+            /** @description Member not on the caller's team */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     get_meeting: {
         parameters: {
             query?: never;
@@ -449,6 +575,140 @@ export interface operations {
             };
             /** @description No such meeting */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    delete_meeting: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Meeting id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Meeting's member not on the caller's team */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such meeting */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Cannot delete a completed meeting */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    update_meeting: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Meeting id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateMeetingRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated meeting */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeetingDetail"];
+                };
+            };
+            /** @description Invalid payload */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Meeting's member not on the caller's team */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such meeting */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    complete_meeting: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Meeting id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Completed meeting */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeetingDetail"];
+                };
+            };
+            /** @description Meeting's member not on the caller's team */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such meeting */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Meeting is not planned */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -649,6 +909,36 @@ export interface operations {
             };
             /** @description Not the team's lead */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_template: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Template id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Template with ordered field defs */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TemplateDetail"];
+                };
+            };
+            /** @description No such template */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
