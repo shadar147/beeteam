@@ -1,12 +1,17 @@
+"use client";
 import { Pill } from "./Pill";
 import { NoteBlock } from "./NoteBlock";
 import type { MeetingDetail } from "@/lib/query/profile";
+import { useDrawerStore } from "@/lib/store/drawer";
+import { useDeleteMeeting } from "@/lib/query/meetings";
 
 function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" });
 }
 
 export function MeetingDetailCard({ meeting }: { meeting: MeetingDetail }) {
+  const open = useDrawerStore((s) => s.open);
+  const del = useDeleteMeeting();
   const dateStr = fmtDate(meeting.date);
 
   if (meeting.state !== "done") {
@@ -16,9 +21,14 @@ export function MeetingDetailCard({ meeting }: { meeting: MeetingDetail }) {
         <div className="mt-2 text-[14px] font-medium text-ink tabular">{dateStr}</div>
         <p className="mt-1 text-[13px] text-ink-3">Встреча ещё не проведена.</p>
         <div className="mt-3 flex gap-2">
-          <button type="button" className="rounded-md bg-brand px-3 py-1.5 text-[13px] font-medium text-brand-text">Провести сейчас</button>
-          <button type="button" className="rounded-md border border-line px-3 py-1.5 text-[13px] text-ink-2">Перенести</button>
-          <button type="button" className="rounded-md border border-line px-3 py-1.5 text-[13px] text-ink-2">Отменить</button>
+          <button type="button" className="rounded-md bg-brand px-3 py-1.5 text-[13px] font-medium text-brand-text"
+            onClick={() => open(meeting.id)}>Провести сейчас</button>
+          <button type="button" className="rounded-md border border-line px-3 py-1.5 text-[13px] text-ink-2"
+            onClick={() => open(meeting.id)}>Перенести</button>
+          <button type="button" className="rounded-md border border-line px-3 py-1.5 text-[13px] text-ink-2"
+            onClick={() => { if (confirm("Удалить встречу?")) del.mutate({ id: meeting.id, memberId: meeting.member_id }); }}>
+            Отменить
+          </button>
         </div>
       </div>
     );
@@ -30,6 +40,8 @@ export function MeetingDetailCard({ meeting }: { meeting: MeetingDetail }) {
         <Pill variant="ok" dot>Завершена</Pill>
         <span className="text-[12px] text-ink-3 tabular">{dateStr} · {meeting.duration_min} мин</span>
       </div>
+      <button type="button" className="mt-3 rounded-md border border-line px-3 py-1.5 text-[13px] text-ink-2"
+        onClick={() => open(meeting.id)}>Редактировать</button>
       <div className="mt-3 grid grid-cols-2 gap-3">
         <div className="rounded-md border border-line-2 bg-bg-tint p-3">
           <div className="text-[11px] uppercase text-ink-3">Настроение</div>

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Avatar } from "./Avatar";
 import { Pill } from "./Pill";
 import { MoodTrendBars } from "./MoodTrendBars";
+import { ProfileActions } from "./ProfileActions";
 import type { MemberDetail } from "@/lib/query/profile";
 
 export function ProfileHeader({ member }: { member: MemberDetail }) {
@@ -30,11 +31,7 @@ export function ProfileHeader({ member }: { member: MemberDetail }) {
             {member.tags.map((t) => <Pill key={t}>{t}</Pill>)}
           </div>
         </div>
-        <div className="flex shrink-0 gap-2">
-          <button type="button" className="rounded-md border border-line px-3 py-1.5 text-[13px] text-ink-2">Написать</button>
-          <button type="button" className="rounded-md border border-line px-3 py-1.5 text-[13px] text-ink-2">Экспорт</button>
-          <button type="button" className="rounded-md bg-brand px-3 py-1.5 text-[13px] font-medium text-brand-text">Начать 1-2-1</button>
-        </div>
+        <ProfileActions memberId={member.id} />
       </div>
     </div>
   );
