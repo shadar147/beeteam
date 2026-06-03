@@ -40,7 +40,9 @@ pub fn build_router(state: AppState) -> Router {
         .route("/v1/members/:id/files", get(routes::members::list_member_files))
         .route("/v1/meetings", axum::routing::post(routes::meetings::create_meeting))
         .route("/v1/meetings/:id", get(routes::meetings::get_meeting)
-            .patch(routes::meetings::update_meeting))
+            .patch(routes::meetings::update_meeting)
+            .delete(routes::meetings::delete_meeting))
+        .route("/v1/meetings/:id/complete", axum::routing::post(routes::meetings::complete_meeting))
         .route_layer(axum::middleware::from_fn_with_state(state.clone(), require_auth));
 
     Router::new()

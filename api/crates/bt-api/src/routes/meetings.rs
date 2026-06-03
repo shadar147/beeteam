@@ -146,6 +146,63 @@ pub async fn update_meeting(
     Ok(Json(detail))
 }
 
+#[utoipa::path(
+    post,
+    path = "/v1/meetings/{id}/complete",
+    params(("id" = uuid::Uuid, Path, description = "Meeting id")),
+    responses(
+        (status = 200, description = "Completed meeting", body = MeetingDetail),
+        (status = 403, description = "Meeting's member not on the caller's team"),
+        (status = 404, description = "No such meeting"),
+        (status = 409, description = "Meeting is not planned"),
+    )
+)]
+pub async fn complete_meeting(
+    State(state): State<AppState>,
+    axum::Extension(auth): axum::Extension<AuthUser>,
+    Path(meeting_id): Path<Uuid>,
+) -> AppResult<Json<MeetingDetail>> {
+    let existing = load_meeting_detail(&state.pool, meeting_id).await?.ok_or(AppError::NotFound)?;
+    require_member_access(&auth, existing.member_id, &state.pool).await?;
+    if existing.state != "planned" {
+        return Err(AppError::Conflict("meeting is not planned".into()));
+    }
+    sqlx::query("UPDATE meetings SET state = 'done'::meeting_state, updated_at = now() WHERE id = $1")
+        .bind(meeting_id)
+        .execute(&state.pool)
+        .await?;
+    let detail = load_meeting_detail(&state.pool, meeting_id).await?.ok_or(AppError::NotFound)?;
+    Ok(Json(detail))
+}
+
+#[utoipa::path(
+    delete,
+    path = "/v1/meetings/{id}",
+    params(("id" = uuid::Uuid, Path, description = "Meeting id")),
+    responses(
+        (status = 204, description = "Deleted"),
+        (status = 403, description = "Meeting's member not on the caller's team"),
+        (status = 404, description = "No such meeting"),
+        (status = 409, description = "Cannot delete a completed meeting"),
+    )
+)]
+pub async fn delete_meeting(
+    State(state): State<AppState>,
+    axum::Extension(auth): axum::Extension<AuthUser>,
+    Path(meeting_id): Path<Uuid>,
+) -> AppResult<StatusCode> {
+    let existing = load_meeting_detail(&state.pool, meeting_id).await?.ok_or(AppError::NotFound)?;
+    require_member_access(&auth, existing.member_id, &state.pool).await?;
+    if existing.state == "done" {
+        return Err(AppError::Conflict("cannot delete a completed meeting".into()));
+    }
+    sqlx::query("DELETE FROM meetings WHERE id = $1")
+        .bind(meeting_id)
+        .execute(&state.pool)
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 #[cfg(test)]
 mod tests {
     use axum::body::Body;
@@ -284,5 +341,54 @@ mod tests {
         let (status, _) = req(pool, "PATCH", &format!("/v1/meetings/{id}"), &token,
             Some(serde_json::json!({"mood_score": 99}))).await;
         assert_eq!(status, StatusCode::BAD_REQUEST);
+    }
+
+    #[sqlx::test(migrations = "../bt-db/migrations")]
+    async fn complete_transitions_then_conflicts(pool: sqlx::PgPool) {
+        let (token, anna, _tpl) = seed(&pool).await;
+        let (_, created) = req(pool.clone(), "POST", "/v1/meetings", &token,
+            Some(serde_json::json!({"member_id": anna}))).await;
+        let id = created["id"].as_str().unwrap().to_string();
+        let (s1, j1) = req(pool.clone(), "POST", &format!("/v1/meetings/{id}/complete"), &token, None).await;
+        assert_eq!(s1, StatusCode::OK);
+        assert_eq!(j1["state"], "done");
+        let (s2, _) = req(pool, "POST", &format!("/v1/meetings/{id}/complete"), &token, None).await;
+        assert_eq!(s2, StatusCode::CONFLICT);
+    }
+
+    #[sqlx::test(migrations = "../bt-db/migrations")]
+    async fn delete_planned_then_gone_and_done_conflicts(pool: sqlx::PgPool) {
+        let (token, anna, _tpl) = seed(&pool).await;
+        // planned → delete → 204 → 404
+        let (_, m1) = req(pool.clone(), "POST", "/v1/meetings", &token,
+            Some(serde_json::json!({"member_id": anna}))).await;
+        let id1 = m1["id"].as_str().unwrap().to_string();
+        let (sd, _) = req(pool.clone(), "DELETE", &format!("/v1/meetings/{id1}"), &token, None).await;
+        assert_eq!(sd, StatusCode::NO_CONTENT);
+        let (sg, _) = req(pool.clone(), "GET", &format!("/v1/meetings/{id1}"), &token, None).await;
+        assert_eq!(sg, StatusCode::NOT_FOUND);
+        // done → delete → 409
+        let (_, m2) = req(pool.clone(), "POST", "/v1/meetings", &token,
+            Some(serde_json::json!({"member_id": anna}))).await;
+        let id2 = m2["id"].as_str().unwrap().to_string();
+        req(pool.clone(), "POST", &format!("/v1/meetings/{id2}/complete"), &token, None).await;
+        let (s409, _) = req(pool, "DELETE", &format!("/v1/meetings/{id2}"), &token, None).await;
+        assert_eq!(s409, StatusCode::CONFLICT);
+    }
+
+    #[sqlx::test(migrations = "../bt-db/migrations")]
+    async fn mutations_foreign_member_forbidden(pool: sqlx::PgPool) {
+        let (token, anna, _tpl) = seed(&pool).await;
+        let (foreign_token, _bob) = seed_foreign(&pool).await;
+        let (_, created) = req(pool.clone(), "POST", "/v1/meetings", &token,
+            Some(serde_json::json!({"member_id": anna}))).await;
+        let id = created["id"].as_str().unwrap().to_string();
+        let (s1, _) = req(pool.clone(), "PATCH", &format!("/v1/meetings/{id}"), &foreign_token,
+            Some(serde_json::json!({"blockers":"x"}))).await;
+        let (s2, _) = req(pool.clone(), "POST", &format!("/v1/meetings/{id}/complete"), &foreign_token, None).await;
+        let (s3, _) = req(pool, "DELETE", &format!("/v1/meetings/{id}"), &foreign_token, None).await;
+        assert_eq!(s1, StatusCode::FORBIDDEN);
+        assert_eq!(s2, StatusCode::FORBIDDEN);
+        assert_eq!(s3, StatusCode::FORBIDDEN);
     }
 }
