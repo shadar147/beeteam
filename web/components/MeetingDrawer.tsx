@@ -47,6 +47,12 @@ export function MeetingDrawer({ meetingId, onClose }: { meetingId: string; onClo
     autosave.schedule(formToPatch(next));
   }
 
+  function editMany(updates: Partial<MeetingForm>) {
+    const next = { ...form, ...updates };
+    dispatch({ type: "reset", form: next });
+    autosave.schedule(formToPatch(next));
+  }
+
   const done = meeting.data?.state === "done";
 
   return (
@@ -95,7 +101,7 @@ export function MeetingDrawer({ meetingId, onClose }: { meetingId: string; onClo
                   value={f.kind === "mood" ? form.mood : value}
                   moodScore={form.mood_score}
                   onChange={(v) => key && edit(key, v)}
-                  onMood={(emoji, score) => { edit("mood", emoji); edit("mood_score", score); }}
+                  onMood={(emoji, score) => editMany({ mood: emoji, mood_score: score })}
                 />
               );
             })
