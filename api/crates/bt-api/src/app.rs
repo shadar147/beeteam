@@ -43,6 +43,7 @@ pub fn build_router(state: AppState) -> Router {
             .patch(routes::meetings::update_meeting)
             .delete(routes::meetings::delete_meeting))
         .route("/v1/meetings/:id/complete", axum::routing::post(routes::meetings::complete_meeting))
+        .route("/v1/templates/:id", get(routes::templates::get_template))
         .route_layer(axum::middleware::from_fn_with_state(state.clone(), require_auth));
 
     Router::new()

@@ -391,4 +391,14 @@ mod tests {
         assert_eq!(s2, StatusCode::FORBIDDEN);
         assert_eq!(s3, StatusCode::FORBIDDEN);
     }
+
+    #[sqlx::test(migrations = "../bt-db/migrations")]
+    async fn template_returns_ordered_fields(pool: sqlx::PgPool) {
+        let (token, _anna, tpl) = seed(&pool).await;
+        let (status, json) = req(pool, "GET", &format!("/v1/templates/{tpl}"), &token, None).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(json["name"], "Базовый");
+        assert_eq!(json["fields"][0]["kind"], "mood");
+        assert_eq!(json["fields"][0]["title"], "Настроение");
+    }
 }
