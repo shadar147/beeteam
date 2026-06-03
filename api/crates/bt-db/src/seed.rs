@@ -48,12 +48,13 @@ pub async fn seed_demo(pool: &PgPool) -> Result<(), sqlx::Error> {
     .await?;
     let tpl_id = tpl.0;
 
-    let base_fields: [(&str, &str, &str); 6] = [
+    let base_fields: [(&str, &str, &str); 7] = [
         ("mood", "Настроение", ""),
         ("longtext", "Блокеры", "Что мешает в работе?"),
         ("longtext", "Цели", "Над чем работаем?"),
-        ("longtext", "Фидбек", "Фидбек к / от"),
-        ("longtext", "Развитие", "План развития"),
+        ("longtext", "Фидбек сотруднику", "Что хочется отметить и улучшить"),
+        ("longtext", "Фидбек от сотрудника", "Что говорит сотрудник"),
+        ("longtext", "Развитие", "По пункту на строку"),
         ("longtext", "Отношения", "Как в команде?"),
     ];
     for (i, (ty, title, ph)) in base_fields.iter().enumerate() {
@@ -361,7 +362,7 @@ mod tests {
 
         let fields: (i64,) = sqlx::query_as("SELECT count(*) FROM field_defs")
             .fetch_one(&pool).await.unwrap();
-        assert_eq!(fields.0, 6);
+        assert_eq!(fields.0, 7);
 
         let dated: (i64,) = sqlx::query_as(
             "SELECT count(*) FROM team_members WHERE joined_date IS NOT NULL")
