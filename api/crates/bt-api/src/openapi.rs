@@ -13,6 +13,11 @@ use utoipa::OpenApi;
         crate::routes::members::get_member_goals,
         crate::routes::members::list_member_files,
         crate::routes::meetings::get_meeting,
+        crate::routes::meetings::create_meeting,
+        crate::routes::meetings::update_meeting,
+        crate::routes::meetings::complete_meeting,
+        crate::routes::meetings::delete_meeting,
+        crate::routes::templates::get_template,
     ),
     components(schemas(
         bt_domain::Health,
@@ -30,6 +35,10 @@ use utoipa::OpenApi;
         bt_domain::Competency,
         bt_domain::GoalsResponse,
         bt_domain::FileMeta,
+        bt_domain::CreateMeetingRequest,
+        bt_domain::UpdateMeetingRequest,
+        bt_domain::FieldDef,
+        bt_domain::TemplateDetail,
     )),
     info(title = "BeeTeam API", version = "0.1.0")
 )]
