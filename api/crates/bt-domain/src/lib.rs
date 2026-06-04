@@ -205,6 +205,29 @@ pub struct UpdateMeetingRequest {
     pub relationships: Option<String>,
 }
 
+#[derive(Debug, Clone, Deserialize, ToSchema, Validate)]
+pub struct CreateGoalRequest {
+    pub member_id: uuid::Uuid,
+    pub quarter: String,
+    pub title: String,
+    pub key_result: String,
+    #[validate(range(min = 0, max = 100, message = "progress must be 0..100"))]
+    pub progress: i32,
+    pub status: String,
+    pub due: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Debug, Clone, Deserialize, ToSchema, Validate)]
+pub struct UpdateGoalRequest {
+    pub quarter: Option<String>,
+    pub title: Option<String>,
+    pub key_result: Option<String>,
+    #[validate(range(min = 0, max = 100, message = "progress must be 0..100"))]
+    pub progress: Option<i32>,
+    pub status: Option<String>,
+    pub due: Option<chrono::DateTime<chrono::Utc>>,
+}
+
 /// A meeting form field definition (from a template), for rendering the drawer.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct FieldDef {

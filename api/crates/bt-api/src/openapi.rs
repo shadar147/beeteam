@@ -17,6 +17,9 @@ use utoipa::OpenApi;
         crate::routes::meetings::update_meeting,
         crate::routes::meetings::complete_meeting,
         crate::routes::meetings::delete_meeting,
+        crate::routes::goals::create_goal,
+        crate::routes::goals::update_goal,
+        crate::routes::goals::delete_goal,
         crate::routes::templates::get_template,
     ),
     components(schemas(
@@ -37,6 +40,8 @@ use utoipa::OpenApi;
         bt_domain::FileMeta,
         bt_domain::CreateMeetingRequest,
         bt_domain::UpdateMeetingRequest,
+        bt_domain::CreateGoalRequest,
+        bt_domain::UpdateGoalRequest,
         bt_domain::FieldDef,
         bt_domain::TemplateDetail,
     )),

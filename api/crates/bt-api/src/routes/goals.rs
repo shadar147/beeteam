@@ -1,0 +1,253 @@
+use crate::auth::middleware::AuthUser;
+use crate::error::{AppError, AppResult};
+use crate::routes::members::require_member_access;
+use crate::app::AppState;
+use axum::extract::{Path, State};
+use axum::http::StatusCode;
+use axum::Json;
+use bt_domain::{Goal, CreateGoalRequest, UpdateGoalRequest};
+use uuid::Uuid;
+use validator::Validate;
+
+fn validate_goal_status(s: &str) -> AppResult<()> {
+    if matches!(s, "ontrack" | "risk" | "done") {
+        Ok(())
+    } else {
+        Err(AppError::BadRequest("invalid goal status".into()))
+    }
+}
+
+async fn goal_member(pool: &sqlx::PgPool, id: Uuid) -> AppResult<Uuid> {
+    let r: Option<(Uuid,)> = sqlx::query_as("SELECT member_id FROM goals WHERE id = $1")
+        .bind(id)
+        .fetch_optional(pool)
+        .await?;
+    Ok(r.ok_or(AppError::NotFound)?.0)
+}
+
+type GoalRow = (uuid::Uuid, String, String, String, i32, String, chrono::DateTime<chrono::Utc>);
+fn goal_from(r: GoalRow) -> Goal {
+    Goal { id: r.0, quarter: r.1, title: r.2, key_result: r.3, progress: r.4, status: r.5, due: r.6 }
+}
+const GOAL_COLS: &str = "id, quarter, title, key_result, progress, status::text, due";
+
+#[utoipa::path(
+    post, path = "/v1/goals", request_body = CreateGoalRequest,
+    responses((status = 201, body = Goal), (status = 400), (status = 403))
+)]
+pub async fn create_goal(
+    State(state): State<AppState>,
+    axum::Extension(auth): axum::Extension<AuthUser>,
+    Json(body): Json<CreateGoalRequest>,
+) -> AppResult<(StatusCode, Json<Goal>)> {
+    body.validate().map_err(|e| AppError::BadRequest(e.to_string()))?;
+    validate_goal_status(&body.status)?;
+    require_member_access(&auth, body.member_id, &state.pool).await?;
+
+    let r: GoalRow = sqlx::query_as(&format!(
+        "INSERT INTO goals (workspace_id, member_id, quarter, title, key_result, progress, status, due) \
+         SELECT tm.workspace_id, tm.id, $2, $3, $4, $5, $6::goal_status, $7 \
+         FROM team_members tm WHERE tm.id = $1 RETURNING {GOAL_COLS}"
+    ))
+    .bind(body.member_id).bind(body.quarter).bind(body.title).bind(body.key_result)
+    .bind(body.progress).bind(body.status).bind(body.due)
+    .fetch_one(&state.pool).await?;
+    Ok((StatusCode::CREATED, Json(goal_from(r))))
+}
+
+#[utoipa::path(
+    patch, path = "/v1/goals/{id}", request_body = UpdateGoalRequest,
+    params(("id" = uuid::Uuid, Path, description = "Goal id")),
+    responses((status = 200, body = Goal), (status = 400), (status = 403), (status = 404))
+)]
+pub async fn update_goal(
+    State(state): State<AppState>,
+    axum::Extension(auth): axum::Extension<AuthUser>,
+    Path(id): Path<Uuid>,
+    Json(body): Json<UpdateGoalRequest>,
+) -> AppResult<Json<Goal>> {
+    body.validate().map_err(|e| AppError::BadRequest(e.to_string()))?;
+    if let Some(s) = &body.status { validate_goal_status(s)?; }
+    let member_id = goal_member(&state.pool, id).await?;
+    require_member_access(&auth, member_id, &state.pool).await?;
+
+    let r: GoalRow = sqlx::query_as(&format!(
+        "UPDATE goals SET \
+           quarter    = COALESCE($2, quarter), \
+           title      = COALESCE($3, title), \
+           key_result = COALESCE($4, key_result), \
+           progress   = COALESCE($5, progress), \
+           status     = COALESCE($6::goal_status, status), \
+           due        = COALESCE($7, due) \
+         WHERE id = $1 RETURNING {GOAL_COLS}"
+    ))
+    .bind(id).bind(body.quarter).bind(body.title).bind(body.key_result)
+    .bind(body.progress).bind(body.status).bind(body.due)
+    .fetch_one(&state.pool).await?;
+    Ok(Json(goal_from(r)))
+}
+
+#[utoipa::path(
+    delete, path = "/v1/goals/{id}",
+    params(("id" = uuid::Uuid, Path, description = "Goal id")),
+    responses((status = 204), (status = 403), (status = 404))
+)]
+pub async fn delete_goal(
+    State(state): State<AppState>,
+    axum::Extension(auth): axum::Extension<AuthUser>,
+    Path(id): Path<Uuid>,
+) -> AppResult<StatusCode> {
+    let member_id = goal_member(&state.pool, id).await?;
+    require_member_access(&auth, member_id, &state.pool).await?;
+    sqlx::query("DELETE FROM goals WHERE id = $1").bind(id).execute(&state.pool).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[cfg(test)]
+mod tests {
+    use axum::body::Body;
+    use axum::http::{Request, StatusCode};
+    use http_body_util::BodyExt;
+    use tower::ServiceExt;
+
+    use crate::app::{build_router, AppState};
+    use crate::auth::password::hash_password;
+
+    fn app(pool: sqlx::PgPool) -> axum::Router {
+        build_router(AppState {
+            pool,
+            jwt_secret: "test-secret".into(),
+            web_origin: "http://localhost:3000".into(),
+        })
+    }
+
+    /// Workspace + lead + team + member Anna. Returns (token, anna_id).
+    pub(super) async fn seed(pool: &sqlx::PgPool) -> (String, uuid::Uuid) {
+        let ws: (uuid::Uuid,) =
+            sqlx::query_as("INSERT INTO workspaces (name) VALUES ('T') RETURNING id")
+                .fetch_one(pool).await.unwrap();
+        let hash = hash_password("demo1234").unwrap();
+        let lead: (uuid::Uuid,) = sqlx::query_as(
+            "INSERT INTO users (workspace_id, email, password_hash, name, role, hue) \
+             VALUES ($1,'a@x.io',$2,'Lead','lead'::user_role,40) RETURNING id",
+        ).bind(ws.0).bind(&hash).fetch_one(pool).await.unwrap();
+        let team: (uuid::Uuid,) = sqlx::query_as(
+            "INSERT INTO teams (workspace_id, name, lead_id, default_cadence, visibility) \
+             VALUES ($1,'team',$2,'2w'::cadence,'private'::visibility) RETURNING id",
+        ).bind(ws.0).bind(lead.0).fetch_one(pool).await.unwrap();
+        let anna: (uuid::Uuid,) = sqlx::query_as(
+            "INSERT INTO team_members (workspace_id, team_id, name, role, email, joined, tz, mood_trend, status, tags, hue, joined_date) \
+             VALUES ($1,$2,'Анна','FE','anna@x.io','2023','Europe/Moscow','{6,7,8}','ok'::member_status,'{}',28,'2023-01-01') RETURNING id",
+        ).bind(ws.0).bind(team.0).fetch_one(pool).await.unwrap();
+        (login_token(pool, "a@x.io").await, anna.0)
+    }
+
+    /// A second lead+team+member, foreign to `seed`'s caller. Returns (token, member_id).
+    pub(super) async fn seed_foreign(pool: &sqlx::PgPool) -> (String, uuid::Uuid) {
+        let ws: (uuid::Uuid,) =
+            sqlx::query_as("INSERT INTO workspaces (name) VALUES ('F') RETURNING id")
+                .fetch_one(pool).await.unwrap();
+        let hash = hash_password("demo1234").unwrap();
+        let lead: (uuid::Uuid,) = sqlx::query_as(
+            "INSERT INTO users (workspace_id, email, password_hash, name, role, hue) \
+             VALUES ($1,'b@x.io',$2,'L2','lead'::user_role,40) RETURNING id",
+        ).bind(ws.0).bind(&hash).fetch_one(pool).await.unwrap();
+        let team: (uuid::Uuid,) = sqlx::query_as(
+            "INSERT INTO teams (workspace_id, name, lead_id, default_cadence, visibility) \
+             VALUES ($1,'t2',$2,'2w'::cadence,'private'::visibility) RETURNING id",
+        ).bind(ws.0).bind(lead.0).fetch_one(pool).await.unwrap();
+        let bob: (uuid::Uuid,) = sqlx::query_as(
+            "INSERT INTO team_members (workspace_id, team_id, name, role, email, joined, tz, mood_trend, status, tags, hue, joined_date) \
+             VALUES ($1,$2,'Боб','BE','bob@x.io','2023','Europe/Moscow','{5,5,5}','ok'::member_status,'{}',10,'2023-01-01') RETURNING id",
+        ).bind(ws.0).bind(team.0).fetch_one(pool).await.unwrap();
+        (login_token(pool, "b@x.io").await, bob.0)
+    }
+
+    pub(super) async fn login_token(pool: &sqlx::PgPool, email: &str) -> String {
+        let resp = app(pool.clone()).oneshot(
+            Request::builder().method("POST").uri("/v1/auth/login")
+                .header("content-type", "application/json")
+                .body(Body::from(format!(r#"{{"email":"{email}","password":"demo1234"}}"#)))
+                .unwrap(),
+        ).await.unwrap();
+        let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+        serde_json::from_slice::<serde_json::Value>(&bytes).unwrap()["token"].as_str().unwrap().to_string()
+    }
+
+    pub(super) async fn req(pool: sqlx::PgPool, method: &str, uri: &str, token: &str, body: Option<serde_json::Value>)
+        -> (StatusCode, serde_json::Value)
+    {
+        let mut b = Request::builder().method(method).uri(uri)
+            .header("authorization", format!("Bearer {token}"));
+        let body = match body {
+            Some(j) => { b = b.header("content-type", "application/json"); Body::from(j.to_string()) }
+            None => Body::empty(),
+        };
+        let resp = app(pool).oneshot(b.body(body).unwrap()).await.unwrap();
+        let status = resp.status();
+        let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+        (status, serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null))
+    }
+
+    fn goal_body(member: uuid::Uuid) -> serde_json::Value {
+        serde_json::json!({
+            "member_id": member, "quarter": "Q2 2026", "title": "Ускорить экраны",
+            "key_result": "LCP < 1.5s", "progress": 60, "status": "ontrack",
+            "due": "2026-07-01T00:00:00Z"
+        })
+    }
+
+    #[sqlx::test(migrations = "../bt-db/migrations")]
+    async fn create_goal_ok_and_foreign_403(pool: sqlx::PgPool) {
+        let (token, anna) = seed(&pool).await;
+        let (status, json) = req(pool.clone(), "POST", "/v1/goals", &token, Some(goal_body(anna))).await;
+        assert_eq!(status, StatusCode::CREATED);
+        assert_eq!(json["title"], "Ускорить экраны");
+        assert_eq!(json["progress"], 60);
+
+        let (ftoken, bob) = seed_foreign(&pool).await;
+        let _ = ftoken;
+        let (fstatus, _) = req(pool, "POST", "/v1/goals", &token, Some(goal_body(bob))).await;
+        assert_eq!(fstatus, StatusCode::FORBIDDEN);
+    }
+
+    #[sqlx::test(migrations = "../bt-db/migrations")]
+    async fn create_goal_rejects_bad_progress(pool: sqlx::PgPool) {
+        let (token, anna) = seed(&pool).await;
+        let mut body = goal_body(anna);
+        body["progress"] = serde_json::json!(101);
+        let (status, _) = req(pool, "POST", "/v1/goals", &token, Some(body)).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+    }
+
+    #[sqlx::test(migrations = "../bt-db/migrations")]
+    async fn patch_goal_updates_then_delete_gone(pool: sqlx::PgPool) {
+        let (token, anna) = seed(&pool).await;
+        let (_, g) = req(pool.clone(), "POST", "/v1/goals", &token, Some(goal_body(anna))).await;
+        let id = g["id"].as_str().unwrap().to_string();
+        let (ps, pj) = req(pool.clone(), "PATCH", &format!("/v1/goals/{id}"), &token,
+            Some(serde_json::json!({"progress": 100, "status": "done"}))).await;
+        assert_eq!(ps, StatusCode::OK);
+        assert_eq!(pj["progress"], 100);
+        assert_eq!(pj["status"], "done");
+        assert_eq!(pj["title"], "Ускорить экраны"); // untouched
+        let (ds, _) = req(pool.clone(), "DELETE", &format!("/v1/goals/{id}"), &token, None).await;
+        assert_eq!(ds, StatusCode::NO_CONTENT);
+        let (gs, gj) = req(pool, "GET", &format!("/v1/members/{anna}/goals"), &token, None).await;
+        assert_eq!(gs, StatusCode::OK);
+        assert_eq!(gj["okrs"].as_array().unwrap().len(), 0);
+    }
+
+    #[sqlx::test(migrations = "../bt-db/migrations")]
+    async fn patch_delete_foreign_403(pool: sqlx::PgPool) {
+        let (token, anna) = seed(&pool).await;
+        let (ftoken, _bob) = seed_foreign(&pool).await;
+        let (_, g) = req(pool.clone(), "POST", "/v1/goals", &token, Some(goal_body(anna))).await;
+        let id = g["id"].as_str().unwrap().to_string();
+        let (ps, _) = req(pool.clone(), "PATCH", &format!("/v1/goals/{id}"), &ftoken,
+            Some(serde_json::json!({"progress": 10}))).await;
+        let (ds, _) = req(pool, "DELETE", &format!("/v1/goals/{id}"), &ftoken, None).await;
+        assert_eq!(ps, StatusCode::FORBIDDEN);
+        assert_eq!(ds, StatusCode::FORBIDDEN);
+    }
+}
