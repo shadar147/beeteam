@@ -5,7 +5,7 @@ use crate::app::AppState;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::Json;
-use bt_domain::{Goal, CreateGoalRequest, UpdateGoalRequest};
+use bt_domain::{Goal, CreateGoalRequest, UpdateGoalRequest, DevItem, CreateDevItemRequest, UpdateDevItemRequest};
 use uuid::Uuid;
 use validator::Validate;
 
@@ -100,6 +100,81 @@ pub async fn delete_goal(
     let member_id = goal_member(&state.pool, id).await?;
     require_member_access(&auth, member_id, &state.pool).await?;
     sqlx::query("DELETE FROM goals WHERE id = $1").bind(id).execute(&state.pool).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+type DevRow = (uuid::Uuid, String, String, String, Option<String>);
+fn dev_from(r: DevRow) -> DevItem {
+    DevItem { id: r.0, title: r.1, kind: r.2, status: r.3, note: r.4 }
+}
+const DEV_COLS: &str = "id, title, kind, status, note";
+
+async fn dev_member(pool: &sqlx::PgPool, id: Uuid) -> AppResult<Uuid> {
+    let r: Option<(Uuid,)> = sqlx::query_as("SELECT member_id FROM development_items WHERE id = $1")
+        .bind(id).fetch_optional(pool).await?;
+    Ok(r.ok_or(AppError::NotFound)?.0)
+}
+
+#[utoipa::path(
+    post, path = "/v1/development-items", request_body = CreateDevItemRequest,
+    responses((status = 201, body = DevItem), (status = 403))
+)]
+pub async fn create_dev_item(
+    State(state): State<AppState>,
+    axum::Extension(auth): axum::Extension<AuthUser>,
+    Json(body): Json<CreateDevItemRequest>,
+) -> AppResult<(StatusCode, Json<DevItem>)> {
+    require_member_access(&auth, body.member_id, &state.pool).await?;
+    let r: DevRow = sqlx::query_as(&format!(
+        "INSERT INTO development_items (workspace_id, member_id, title, kind, status, note, ord) \
+         SELECT tm.workspace_id, tm.id, $2, $3, $4, $5, \
+                COALESCE((SELECT max(ord)+1 FROM development_items WHERE member_id = $1), 0) \
+         FROM team_members tm WHERE tm.id = $1 RETURNING {DEV_COLS}"
+    ))
+    .bind(body.member_id).bind(body.title).bind(body.kind).bind(body.status).bind(body.note)
+    .fetch_one(&state.pool).await?;
+    Ok((StatusCode::CREATED, Json(dev_from(r))))
+}
+
+#[utoipa::path(
+    patch, path = "/v1/development-items/{id}", request_body = UpdateDevItemRequest,
+    params(("id" = uuid::Uuid, Path, description = "Dev item id")),
+    responses((status = 200, body = DevItem), (status = 403), (status = 404))
+)]
+pub async fn update_dev_item(
+    State(state): State<AppState>,
+    axum::Extension(auth): axum::Extension<AuthUser>,
+    Path(id): Path<Uuid>,
+    Json(body): Json<UpdateDevItemRequest>,
+) -> AppResult<Json<DevItem>> {
+    let member_id = dev_member(&state.pool, id).await?;
+    require_member_access(&auth, member_id, &state.pool).await?;
+    let r: DevRow = sqlx::query_as(&format!(
+        "UPDATE development_items SET \
+           title  = COALESCE($2, title), \
+           kind   = COALESCE($3, kind), \
+           status = COALESCE($4, status), \
+           note   = COALESCE($5, note) \
+         WHERE id = $1 RETURNING {DEV_COLS}"
+    ))
+    .bind(id).bind(body.title).bind(body.kind).bind(body.status).bind(body.note)
+    .fetch_one(&state.pool).await?;
+    Ok(Json(dev_from(r)))
+}
+
+#[utoipa::path(
+    delete, path = "/v1/development-items/{id}",
+    params(("id" = uuid::Uuid, Path, description = "Dev item id")),
+    responses((status = 204), (status = 403), (status = 404))
+)]
+pub async fn delete_dev_item(
+    State(state): State<AppState>,
+    axum::Extension(auth): axum::Extension<AuthUser>,
+    Path(id): Path<Uuid>,
+) -> AppResult<StatusCode> {
+    let member_id = dev_member(&state.pool, id).await?;
+    require_member_access(&auth, member_id, &state.pool).await?;
+    sqlx::query("DELETE FROM development_items WHERE id = $1").bind(id).execute(&state.pool).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -247,6 +322,48 @@ mod tests {
         let (ps, _) = req(pool.clone(), "PATCH", &format!("/v1/goals/{id}"), &ftoken,
             Some(serde_json::json!({"progress": 10}))).await;
         let (ds, _) = req(pool, "DELETE", &format!("/v1/goals/{id}"), &ftoken, None).await;
+        assert_eq!(ps, StatusCode::FORBIDDEN);
+        assert_eq!(ds, StatusCode::FORBIDDEN);
+    }
+
+    fn dev_body(member: uuid::Uuid) -> serde_json::Value {
+        serde_json::json!({ "member_id": member, "title": "Курс по перфу", "kind": "Курс", "status": "in_progress", "note": "Прогресс 60%" })
+    }
+
+    #[sqlx::test(migrations = "../bt-db/migrations")]
+    async fn dev_item_crud_and_ord_append(pool: sqlx::PgPool) {
+        let (token, anna) = seed(&pool).await;
+        let (s1, j1) = req(pool.clone(), "POST", "/v1/development-items", &token, Some(dev_body(anna))).await;
+        assert_eq!(s1, StatusCode::CREATED);
+        assert_eq!(j1["title"], "Курс по перфу");
+        // second create appends after the first (ord) — verify via the goals read order
+        req(pool.clone(), "POST", "/v1/development-items", &token,
+            Some(serde_json::json!({ "member_id": anna, "title": "Книга", "kind": "Книга", "status": "planned" }))).await;
+        let (_, goals) = req(pool.clone(), "GET", &format!("/v1/members/{anna}/goals"), &token, None).await;
+        let dev = goals["development"].as_array().unwrap();
+        assert_eq!(dev.len(), 2);
+        assert_eq!(dev[0]["title"], "Курс по перфу"); // ord 0 first
+        assert_eq!(dev[1]["title"], "Книга");          // ord 1 next
+
+        let id = j1["id"].as_str().unwrap().to_string();
+        let (ps, pj) = req(pool.clone(), "PATCH", &format!("/v1/development-items/{id}"), &token,
+            Some(serde_json::json!({"status": "done"}))).await;
+        assert_eq!(ps, StatusCode::OK);
+        assert_eq!(pj["status"], "done");
+        assert_eq!(pj["title"], "Курс по перфу");
+        let (ds, _) = req(pool, "DELETE", &format!("/v1/development-items/{id}"), &token, None).await;
+        assert_eq!(ds, StatusCode::NO_CONTENT);
+    }
+
+    #[sqlx::test(migrations = "../bt-db/migrations")]
+    async fn dev_item_foreign_403(pool: sqlx::PgPool) {
+        let (token, anna) = seed(&pool).await;
+        let (ftoken, _bob) = seed_foreign(&pool).await;
+        let (_, j) = req(pool.clone(), "POST", "/v1/development-items", &token, Some(dev_body(anna))).await;
+        let id = j["id"].as_str().unwrap().to_string();
+        let (ps, _) = req(pool.clone(), "PATCH", &format!("/v1/development-items/{id}"), &ftoken,
+            Some(serde_json::json!({"status":"done"}))).await;
+        let (ds, _) = req(pool, "DELETE", &format!("/v1/development-items/{id}"), &ftoken, None).await;
         assert_eq!(ps, StatusCode::FORBIDDEN);
         assert_eq!(ds, StatusCode::FORBIDDEN);
     }

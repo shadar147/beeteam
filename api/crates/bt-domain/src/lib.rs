@@ -206,6 +206,23 @@ pub struct UpdateMeetingRequest {
 }
 
 #[derive(Debug, Clone, Deserialize, ToSchema, Validate)]
+pub struct CreateDevItemRequest {
+    pub member_id: uuid::Uuid,
+    pub title: String,
+    pub kind: String,
+    pub status: String,
+    pub note: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, ToSchema, Validate)]
+pub struct UpdateDevItemRequest {
+    pub title: Option<String>,
+    pub kind: Option<String>,
+    pub status: Option<String>,
+    pub note: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, ToSchema, Validate)]
 pub struct CreateGoalRequest {
     pub member_id: uuid::Uuid,
     pub quarter: String,

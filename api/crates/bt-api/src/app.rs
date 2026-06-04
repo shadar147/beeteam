@@ -46,6 +46,9 @@ pub fn build_router(state: AppState) -> Router {
         .route("/v1/goals", axum::routing::post(routes::goals::create_goal))
         .route("/v1/goals/:id", axum::routing::patch(routes::goals::update_goal)
             .delete(routes::goals::delete_goal))
+        .route("/v1/development-items", axum::routing::post(routes::goals::create_dev_item))
+        .route("/v1/development-items/:id", axum::routing::patch(routes::goals::update_dev_item)
+            .delete(routes::goals::delete_dev_item))
         .route("/v1/templates/:id", get(routes::templates::get_template))
         .route_layer(axum::middleware::from_fn_with_state(state.clone(), require_auth));
 
