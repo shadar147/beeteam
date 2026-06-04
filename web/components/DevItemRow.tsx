@@ -7,7 +7,7 @@ const DOT: Record<string, string> = {
   done: "bg-ok",
 };
 
-export function DevItemRow({ item }: { item: DevItem }) {
+export function DevItemRow({ item, onEdit }: { item: DevItem; onEdit?: () => void }) {
   return (
     <div className="flex items-start gap-3 border-b border-line-2 py-2.5 last:border-b-0">
       <span className={cn("mt-1 h-2.5 w-2.5 shrink-0 rounded-full", DOT[item.status] ?? DOT.planned)} />
@@ -17,6 +17,9 @@ export function DevItemRow({ item }: { item: DevItem }) {
           {item.kind}{item.note ? <> · <span>{item.note}</span></> : ""}
         </div>
       </div>
+      {onEdit && (
+        <button type="button" onClick={onEdit} className="ml-auto text-[12px] text-ink-3 hover:text-ink">Изменить</button>
+      )}
     </div>
   );
 }
