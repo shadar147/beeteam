@@ -29,17 +29,16 @@ test("add an OKR via the modal", async ({ page }) => {
 
 test("add then delete a competency", async ({ page }) => {
   await openAnnaGoals(page);
-  // Competencies section «+ Добавить» is the last one.
+  const name = `Наблюдаемость-${Date.now()}`;
   await page.getByRole("button", { name: "+ Добавить" }).last().click();
   const dialog = page.getByRole("dialog", { name: "Новая компетенция" });
-  await dialog.getByLabel("Компетенция").fill("Наблюдаемость");
+  await dialog.getByLabel("Компетенция").fill(name);
   await dialog.getByLabel("Оценка").fill("7");
   await dialog.getByRole("button", { name: "Сохранить" }).click();
-  await expect(page.getByText("Наблюдаемость")).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText(name)).toBeVisible({ timeout: 10_000 });
 
-  // Edit → delete it (confirm dialog auto-accept).
   page.on("dialog", (d) => d.accept());
-  await page.getByText("Наблюдаемость").locator("xpath=ancestor::div[1]").getByRole("button", { name: "Изменить" }).click();
+  await page.getByText(name).locator("xpath=ancestor::div[1]").getByRole("button", { name: "Изменить" }).click();
   await page.getByRole("button", { name: "Удалить" }).click();
-  await expect(page.getByText("Наблюдаемость")).toBeHidden({ timeout: 10_000 });
+  await expect(page.getByText(name)).toBeHidden({ timeout: 10_000 });
 });
