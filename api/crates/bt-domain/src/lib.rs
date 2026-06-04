@@ -245,6 +245,21 @@ pub struct UpdateGoalRequest {
     pub due: Option<chrono::DateTime<chrono::Utc>>,
 }
 
+#[derive(Debug, Clone, Deserialize, ToSchema, Validate)]
+pub struct CreateCompetencyRequest {
+    pub member_id: uuid::Uuid,
+    pub label: String,
+    #[validate(range(min = 0, max = 10, message = "score must be 0..10"))]
+    pub score: i32,
+}
+
+#[derive(Debug, Clone, Deserialize, ToSchema, Validate)]
+pub struct UpdateCompetencyRequest {
+    pub label: Option<String>,
+    #[validate(range(min = 0, max = 10, message = "score must be 0..10"))]
+    pub score: Option<i32>,
+}
+
 /// A meeting form field definition (from a template), for rendering the drawer.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct FieldDef {

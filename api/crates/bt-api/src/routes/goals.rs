@@ -5,7 +5,7 @@ use crate::app::AppState;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::Json;
-use bt_domain::{Goal, CreateGoalRequest, UpdateGoalRequest, DevItem, CreateDevItemRequest, UpdateDevItemRequest};
+use bt_domain::{Goal, CreateGoalRequest, UpdateGoalRequest, DevItem, CreateDevItemRequest, UpdateDevItemRequest, Competency, CreateCompetencyRequest, UpdateCompetencyRequest};
 use uuid::Uuid;
 use validator::Validate;
 
@@ -124,6 +124,7 @@ pub async fn create_dev_item(
     axum::Extension(auth): axum::Extension<AuthUser>,
     Json(body): Json<CreateDevItemRequest>,
 ) -> AppResult<(StatusCode, Json<DevItem>)> {
+    body.validate().map_err(|e| AppError::BadRequest(e.to_string()))?;
     require_member_access(&auth, body.member_id, &state.pool).await?;
     let r: DevRow = sqlx::query_as(&format!(
         "INSERT INTO development_items (workspace_id, member_id, title, kind, status, note, ord) \
@@ -147,6 +148,7 @@ pub async fn update_dev_item(
     Path(id): Path<Uuid>,
     Json(body): Json<UpdateDevItemRequest>,
 ) -> AppResult<Json<DevItem>> {
+    body.validate().map_err(|e| AppError::BadRequest(e.to_string()))?;
     let member_id = dev_member(&state.pool, id).await?;
     require_member_access(&auth, member_id, &state.pool).await?;
     let r: DevRow = sqlx::query_as(&format!(
@@ -175,6 +177,77 @@ pub async fn delete_dev_item(
     let member_id = dev_member(&state.pool, id).await?;
     require_member_access(&auth, member_id, &state.pool).await?;
     sqlx::query("DELETE FROM development_items WHERE id = $1").bind(id).execute(&state.pool).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+type CompRow = (uuid::Uuid, String, i32);
+fn comp_from(r: CompRow) -> Competency { Competency { id: r.0, label: r.1, score: r.2 } }
+const COMP_COLS: &str = "id, label, score";
+
+async fn comp_member(pool: &sqlx::PgPool, id: Uuid) -> AppResult<Uuid> {
+    let r: Option<(Uuid,)> = sqlx::query_as("SELECT member_id FROM competencies WHERE id = $1")
+        .bind(id).fetch_optional(pool).await?;
+    Ok(r.ok_or(AppError::NotFound)?.0)
+}
+
+#[utoipa::path(
+    post, path = "/v1/competencies", request_body = CreateCompetencyRequest,
+    responses((status = 201, body = Competency), (status = 400), (status = 403))
+)]
+pub async fn create_competency(
+    State(state): State<AppState>,
+    axum::Extension(auth): axum::Extension<AuthUser>,
+    Json(body): Json<CreateCompetencyRequest>,
+) -> AppResult<(StatusCode, Json<Competency>)> {
+    body.validate().map_err(|e| AppError::BadRequest(e.to_string()))?;
+    require_member_access(&auth, body.member_id, &state.pool).await?;
+    let r: CompRow = sqlx::query_as(&format!(
+        "INSERT INTO competencies (workspace_id, member_id, label, score, ord) \
+         SELECT tm.workspace_id, tm.id, $2, $3, \
+                COALESCE((SELECT max(ord)+1 FROM competencies WHERE member_id = $1), 0) \
+         FROM team_members tm WHERE tm.id = $1 RETURNING {COMP_COLS}"
+    ))
+    .bind(body.member_id).bind(body.label).bind(body.score)
+    .fetch_one(&state.pool).await?;
+    Ok((StatusCode::CREATED, Json(comp_from(r))))
+}
+
+#[utoipa::path(
+    patch, path = "/v1/competencies/{id}", request_body = UpdateCompetencyRequest,
+    params(("id" = uuid::Uuid, Path, description = "Competency id")),
+    responses((status = 200, body = Competency), (status = 400), (status = 403), (status = 404))
+)]
+pub async fn update_competency(
+    State(state): State<AppState>,
+    axum::Extension(auth): axum::Extension<AuthUser>,
+    Path(id): Path<Uuid>,
+    Json(body): Json<UpdateCompetencyRequest>,
+) -> AppResult<Json<Competency>> {
+    body.validate().map_err(|e| AppError::BadRequest(e.to_string()))?;
+    let member_id = comp_member(&state.pool, id).await?;
+    require_member_access(&auth, member_id, &state.pool).await?;
+    let r: CompRow = sqlx::query_as(&format!(
+        "UPDATE competencies SET label = COALESCE($2, label), score = COALESCE($3, score) \
+         WHERE id = $1 RETURNING {COMP_COLS}"
+    ))
+    .bind(id).bind(body.label).bind(body.score)
+    .fetch_one(&state.pool).await?;
+    Ok(Json(comp_from(r)))
+}
+
+#[utoipa::path(
+    delete, path = "/v1/competencies/{id}",
+    params(("id" = uuid::Uuid, Path, description = "Competency id")),
+    responses((status = 204), (status = 403), (status = 404))
+)]
+pub async fn delete_competency(
+    State(state): State<AppState>,
+    axum::Extension(auth): axum::Extension<AuthUser>,
+    Path(id): Path<Uuid>,
+) -> AppResult<StatusCode> {
+    let member_id = comp_member(&state.pool, id).await?;
+    require_member_access(&auth, member_id, &state.pool).await?;
+    sqlx::query("DELETE FROM competencies WHERE id = $1").bind(id).execute(&state.pool).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -366,5 +439,41 @@ mod tests {
         let (ds, _) = req(pool, "DELETE", &format!("/v1/development-items/{id}"), &ftoken, None).await;
         assert_eq!(ps, StatusCode::FORBIDDEN);
         assert_eq!(ds, StatusCode::FORBIDDEN);
+    }
+
+    #[sqlx::test(migrations = "../bt-db/migrations")]
+    async fn competency_crud_and_validation(pool: sqlx::PgPool) {
+        let (token, anna) = seed(&pool).await;
+        let (s1, j1) = req(pool.clone(), "POST", "/v1/competencies", &token,
+            Some(serde_json::json!({"member_id": anna, "label": "Frontend", "score": 9}))).await;
+        assert_eq!(s1, StatusCode::CREATED);
+        assert_eq!(j1["label"], "Frontend");
+        assert_eq!(j1["score"], 9);
+
+        // bad score → 400
+        let (sb, _) = req(pool.clone(), "POST", "/v1/competencies", &token,
+            Some(serde_json::json!({"member_id": anna, "label": "X", "score": 11}))).await;
+        assert_eq!(sb, StatusCode::BAD_REQUEST);
+
+        let id = j1["id"].as_str().unwrap().to_string();
+        let (ps, pj) = req(pool.clone(), "PATCH", &format!("/v1/competencies/{id}"), &token,
+            Some(serde_json::json!({"score": 7}))).await;
+        assert_eq!(ps, StatusCode::OK);
+        assert_eq!(pj["score"], 7);
+        assert_eq!(pj["label"], "Frontend");
+        let (ds, _) = req(pool, "DELETE", &format!("/v1/competencies/{id}"), &token, None).await;
+        assert_eq!(ds, StatusCode::NO_CONTENT);
+    }
+
+    #[sqlx::test(migrations = "../bt-db/migrations")]
+    async fn competency_foreign_403(pool: sqlx::PgPool) {
+        let (token, anna) = seed(&pool).await;
+        let (ftoken, _bob) = seed_foreign(&pool).await;
+        let (_, j) = req(pool.clone(), "POST", "/v1/competencies", &token,
+            Some(serde_json::json!({"member_id": anna, "label": "FE", "score": 5}))).await;
+        let id = j["id"].as_str().unwrap().to_string();
+        let (ps, _) = req(pool, "PATCH", &format!("/v1/competencies/{id}"), &ftoken,
+            Some(serde_json::json!({"score": 1}))).await;
+        assert_eq!(ps, StatusCode::FORBIDDEN);
     }
 }
