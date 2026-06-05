@@ -20,10 +20,18 @@ async function proxy(req: NextRequest, path: string[]) {
   if (res.status === 204 || res.status === 304) {
     return new NextResponse(null, { status: res.status });
   }
+  const contentType = res.headers.get("content-type") ?? "application/json";
+  // Binary (e.g. application/zip): pass the body through untouched, preserve disposition.
+  if (!contentType.includes("application/json")) {
+    const headers: Record<string, string> = { "content-type": contentType };
+    const cd = res.headers.get("content-disposition");
+    if (cd) headers["content-disposition"] = cd;
+    return new NextResponse(await res.arrayBuffer(), { status: res.status, headers });
+  }
   const text = await res.text();
   return new NextResponse(text, {
     status: res.status,
-    headers: { "content-type": res.headers.get("content-type") ?? "application/json" },
+    headers: { "content-type": contentType },
   });
 }
 
