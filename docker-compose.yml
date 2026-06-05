@@ -24,8 +24,9 @@ services:
       MINIO_ROOT_PASSWORD: beeteam-secret
       MINIO_API_CORS_ALLOW_ORIGIN: "*"
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      # Host 9002/9003 → container 9000/9001: avoids clashing with another local MinIO on 9000/9001.
+      - "9002:9000"
+      - "9003:9001"
     volumes:
       - ./.docker-data/minio:/data
     healthcheck:
