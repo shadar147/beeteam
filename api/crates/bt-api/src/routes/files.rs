@@ -3,8 +3,10 @@ use crate::error::{AppError, AppResult};
 use crate::app::AppState;
 use crate::routes::members::require_member_access;
 use crate::storage;
+use axum::body::Body;
 use axum::extract::{Path, State};
-use axum::http::StatusCode;
+use axum::http::{header, StatusCode};
+use axum::response::Response;
 use axum::Json;
 use bt_domain::{CreateFileRequest, FileDownload, FileUpload};
 use uuid::Uuid;
@@ -93,6 +95,51 @@ pub async fn download_file(
     }
     let download_url = storage::presign_get(&state.s3, &state.bucket, &key.0).await;
     Ok(Json(bt_domain::FileDownload { download_url }))
+}
+
+#[utoipa::path(
+    get, path = "/v1/members/{id}/files.zip",
+    params(("id" = uuid::Uuid, Path, description = "Member id")),
+    responses((status = 200, description = "Zip of the member's files"), (status = 403))
+)]
+pub async fn download_files_zip(
+    State(state): State<AppState>,
+    axum::Extension(auth): axum::Extension<AuthUser>,
+    Path(member_id): Path<Uuid>,
+) -> AppResult<Response> {
+    require_member_access(&auth, member_id, &state.pool).await?;
+
+    let rows: Vec<(String, String)> = sqlx::query_as(
+        "SELECT name, storage_key FROM files WHERE member_id = $1 ORDER BY created_at DESC",
+    )
+    .bind(member_id)
+    .fetch_all(&state.pool)
+    .await?;
+
+    // Build the zip in memory. Skip seed keys and any object we can't fetch.
+    use std::io::Write;
+    let mut cursor = std::io::Cursor::new(Vec::<u8>::new());
+    {
+        let mut zw = zip::ZipWriter::new(&mut cursor);
+        let opts = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated);
+        for (name, key) in rows {
+            if key.starts_with("seed/") { continue; }
+            if let Some(bytes) = storage::get_object_bytes(&state.s3, &state.bucket, &key).await {
+                zw.start_file(&name, opts).map_err(|e| AppError::BadRequest(e.to_string()))?;
+                zw.write_all(&bytes).map_err(|e| AppError::BadRequest(e.to_string()))?;
+            }
+        }
+        zw.finish().map_err(|e| AppError::BadRequest(e.to_string()))?;
+    }
+    let bytes = cursor.into_inner();
+
+    Ok(Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, "application/zip")
+        .header(header::CONTENT_DISPOSITION, "attachment; filename=\"files.zip\"")
+        .body(Body::from(bytes))
+        .expect("zip response"))
 }
 
 #[cfg(test)]
@@ -269,5 +316,30 @@ mod tests {
         let id = j["file_id"].as_str().unwrap().to_string();
         let (ds, _) = req(pool, "GET", &format!("/v1/files/{id}/download"), &ftoken, None).await;
         assert_eq!(ds, StatusCode::FORBIDDEN);
+    }
+
+    #[sqlx::test(migrations = "../bt-db/migrations")]
+    async fn files_zip_returns_zip(pool: sqlx::PgPool) {
+        let (token, anna) = seed(&pool).await;
+        // A member with no fetchable objects → an empty-but-valid zip (no MinIO needed).
+        let resp = app(pool).oneshot(
+            axum::http::Request::builder()
+                .method("GET").uri(format!("/v1/members/{anna}/files.zip"))
+                .header("authorization", format!("Bearer {token}"))
+                .body(axum::body::Body::empty()).unwrap(),
+        ).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert_eq!(resp.headers()["content-type"], "application/zip");
+        let bytes = http_body_util::BodyExt::collect(resp.into_body()).await.unwrap().to_bytes();
+        assert_eq!(&bytes[0..2], b"PK"); // zip magic (empty archive still has the EOCD record)
+    }
+
+    #[sqlx::test(migrations = "../bt-db/migrations")]
+    async fn files_zip_foreign_403(pool: sqlx::PgPool) {
+        let (token, anna) = seed(&pool).await;
+        let (ftoken, _bob) = seed_foreign(&pool).await;
+        let _ = (token, );
+        let (s, _) = req(pool, "GET", &format!("/v1/members/{anna}/files.zip"), &ftoken, None).await;
+        assert_eq!(s, StatusCode::FORBIDDEN);
     }
 }
