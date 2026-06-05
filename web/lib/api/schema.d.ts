@@ -460,6 +460,8 @@ export interface components {
             /** Format: uuid */
             id: string;
             kind: string;
+            /** Format: uuid */
+            meeting_id?: string | null;
             meeting_label?: string | null;
             mime: string;
             name: string;
