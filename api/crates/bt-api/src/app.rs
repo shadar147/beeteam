@@ -56,6 +56,7 @@ pub fn build_router(state: AppState) -> Router {
             .delete(routes::goals::delete_competency))
         .route("/v1/files", axum::routing::post(routes::files::create_file))
         .route("/v1/files/:id", axum::routing::delete(routes::files::delete_file))
+        .route("/v1/files/:id/download", get(routes::files::download_file))
         .route("/v1/templates/:id", get(routes::templates::get_template))
         .route_layer(axum::middleware::from_fn_with_state(state.clone(), require_auth));
 

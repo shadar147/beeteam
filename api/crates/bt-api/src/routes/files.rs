@@ -6,7 +6,7 @@ use crate::storage;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::Json;
-use bt_domain::{CreateFileRequest, FileUpload};
+use bt_domain::{CreateFileRequest, FileDownload, FileUpload};
 use uuid::Uuid;
 use validator::Validate;
 
@@ -71,6 +71,28 @@ pub async fn delete_file(
     }
     sqlx::query("DELETE FROM files WHERE id = $1").bind(id).execute(&state.pool).await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+#[utoipa::path(
+    get, path = "/v1/files/{id}/download",
+    params(("id" = uuid::Uuid, Path, description = "File id")),
+    responses((status = 200, body = FileDownload), (status = 403), (status = 404), (status = 409))
+)]
+pub async fn download_file(
+    State(state): State<AppState>,
+    axum::Extension(auth): axum::Extension<AuthUser>,
+    Path(id): Path<Uuid>,
+) -> AppResult<Json<bt_domain::FileDownload>> {
+    let member_id = file_member(&state.pool, id).await?;
+    require_member_access(&auth, member_id, &state.pool).await?;
+
+    let key: (String,) = sqlx::query_as("SELECT storage_key FROM files WHERE id = $1")
+        .bind(id).fetch_one(&state.pool).await?;
+    if key.0.starts_with("seed/") {
+        return Err(AppError::Conflict("демо-файл недоступен для скачивания".into()));
+    }
+    let download_url = storage::presign_get(&state.s3, &state.bucket, &key.0).await;
+    Ok(Json(bt_domain::FileDownload { download_url }))
 }
 
 #[cfg(test)]
@@ -212,6 +234,40 @@ mod tests {
         let (_, j) = req(pool.clone(), "POST", "/v1/files", &token, Some(file_body(anna))).await;
         let id = j["file_id"].as_str().unwrap().to_string();
         let (ds, _) = req(pool, "DELETE", &format!("/v1/files/{id}"), &ftoken, None).await;
+        assert_eq!(ds, StatusCode::FORBIDDEN);
+    }
+
+    #[sqlx::test(migrations = "../bt-db/migrations")]
+    async fn download_normal_file_returns_url(pool: sqlx::PgPool) {
+        let (token, anna) = seed(&pool).await;
+        let (_, j) = req(pool.clone(), "POST", "/v1/files", &token, Some(file_body(anna))).await;
+        let id = j["file_id"].as_str().unwrap().to_string();
+        let (ds, dj) = req(pool, "GET", &format!("/v1/files/{id}/download"), &token, None).await;
+        assert_eq!(ds, StatusCode::OK);
+        assert!(dj["download_url"].as_str().unwrap().contains("report.pdf"));
+    }
+
+    #[sqlx::test(migrations = "../bt-db/migrations")]
+    async fn download_seed_file_409(pool: sqlx::PgPool) {
+        let (token, anna) = seed(&pool).await;
+        // insert a seed-key file directly
+        let ws: (uuid::Uuid,) = sqlx::query_as("SELECT workspace_id FROM team_members WHERE id = $1")
+            .bind(anna).fetch_one(&pool).await.unwrap();
+        let fid: (uuid::Uuid,) = sqlx::query_as(
+            "INSERT INTO files (workspace_id, member_id, name, mime, kind, size_bytes, storage_key, uploaded_by) \
+             VALUES ($1,$2,'old.pdf','application/pdf','pdf'::file_kind,10,'seed/old.pdf','Лид') RETURNING id",
+        ).bind(ws.0).bind(anna).fetch_one(&pool).await.unwrap();
+        let (ds, _) = req(pool, "GET", &format!("/v1/files/{}/download", fid.0), &token, None).await;
+        assert_eq!(ds, StatusCode::CONFLICT);
+    }
+
+    #[sqlx::test(migrations = "../bt-db/migrations")]
+    async fn download_foreign_403(pool: sqlx::PgPool) {
+        let (token, anna) = seed(&pool).await;
+        let (ftoken, _bob) = seed_foreign(&pool).await;
+        let (_, j) = req(pool.clone(), "POST", "/v1/files", &token, Some(file_body(anna))).await;
+        let id = j["file_id"].as_str().unwrap().to_string();
+        let (ds, _) = req(pool, "GET", &format!("/v1/files/{id}/download"), &ftoken, None).await;
         assert_eq!(ds, StatusCode::FORBIDDEN);
     }
 }
