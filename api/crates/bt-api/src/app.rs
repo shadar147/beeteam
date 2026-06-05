@@ -15,6 +15,8 @@ pub struct AppState {
     pub pool: PgPool,
     pub jwt_secret: String,
     pub web_origin: String,
+    pub s3: aws_sdk_s3::Client,
+    pub bucket: String,
 }
 
 /// Build the application router. Pure function of state — used by tests too.

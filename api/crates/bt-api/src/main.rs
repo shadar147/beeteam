@@ -3,6 +3,7 @@ mod auth;
 mod error;
 mod openapi;
 mod routes;
+mod storage;
 
 use app::{build_router, AppState};
 
@@ -26,7 +27,11 @@ async fn main() -> anyhow::Result<()> {
     bt_db::migrate(&pool).await?;
     bt_db::seed::seed_demo(&pool).await?;
 
-    let router = build_router(AppState { pool, jwt_secret, web_origin });
+    let s3 = crate::storage::client_from_env();
+    let bucket = crate::storage::bucket_from_env();
+    crate::storage::ensure_bucket(&s3, &bucket).await;
+
+    let router = build_router(AppState { pool, jwt_secret, web_origin, s3, bucket });
     let listener = tokio::net::TcpListener::bind(&bind).await?;
     tracing::info!("bt-api listening on {bind}");
     axum::serve(listener, router).await?;

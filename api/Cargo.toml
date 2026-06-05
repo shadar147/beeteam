@@ -21,3 +21,5 @@ dotenvy = "0.15"
 argon2 = { version = "0.5", features = ["zeroize"] }
 jsonwebtoken = "9"
 validator = { version = "0.18", features = ["derive"] }
+aws-sdk-s3 = { version = "1", features = ["behavior-version-latest"] }
+zip = { version = "2", default-features = false, features = ["deflate"] }

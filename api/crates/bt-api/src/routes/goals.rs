@@ -266,6 +266,8 @@ mod tests {
             pool,
             jwt_secret: "test-secret".into(),
             web_origin: "http://localhost:3000".into(),
+            s3: crate::storage::client_from_env(),
+            bucket: crate::storage::bucket_from_env(),
         })
     }
 
