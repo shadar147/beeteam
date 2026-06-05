@@ -11,6 +11,12 @@ function isoToDate(iso: string): string {
   return new Date(iso).toISOString().slice(0, 10);
 }
 
+/** Current quarter in the seeded "Q{n} {year}" format, e.g. "Q2 2026". */
+function currentQuarter(): string {
+  const d = new Date();
+  return `Q${Math.floor(d.getMonth() / 3) + 1} ${d.getFullYear()}`;
+}
+
 export function OkrForm({
   initial, onSubmit, onDelete, pending, error,
 }: {
@@ -20,7 +26,7 @@ export function OkrForm({
   pending: boolean;
   error: string | null;
 }) {
-  const [quarter, setQuarter] = useState(initial?.quarter ?? "Q2 2026");
+  const [quarter, setQuarter] = useState(initial?.quarter ?? currentQuarter());
   const [title, setTitle] = useState(initial?.title ?? "");
   const [keyResult, setKeyResult] = useState(initial?.key_result ?? "");
   const [progress, setProgress] = useState(initial?.progress ?? 0);
