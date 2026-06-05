@@ -260,6 +260,27 @@ pub struct UpdateCompetencyRequest {
     pub score: Option<i32>,
 }
 
+#[derive(Debug, Clone, Deserialize, ToSchema, Validate)]
+pub struct CreateFileRequest {
+    pub member_id: uuid::Uuid,
+    pub meeting_id: Option<uuid::Uuid>,
+    pub name: String,
+    pub mime: String,
+    #[validate(range(min = 1, max = 52_428_800, message = "file too large"))] // 50 MB
+    pub size_bytes: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct FileUpload {
+    pub file_id: uuid::Uuid,
+    pub upload_url: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct FileDownload {
+    pub download_url: String,
+}
+
 /// A meeting form field definition (from a template), for rendering the drawer.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct FieldDef {

@@ -1,0 +1,217 @@
+use crate::auth::middleware::AuthUser;
+use crate::error::{AppError, AppResult};
+use crate::app::AppState;
+use crate::routes::members::require_member_access;
+use crate::storage;
+use axum::extract::{Path, State};
+use axum::http::StatusCode;
+use axum::Json;
+use bt_domain::{CreateFileRequest, FileUpload};
+use uuid::Uuid;
+use validator::Validate;
+
+/// member_id owner of a file row, or 404.
+async fn file_member(pool: &sqlx::PgPool, id: Uuid) -> AppResult<Uuid> {
+    let r: Option<(Uuid,)> = sqlx::query_as("SELECT member_id FROM files WHERE id = $1")
+        .bind(id).fetch_optional(pool).await?;
+    Ok(r.ok_or(AppError::NotFound)?.0)
+}
+
+#[utoipa::path(
+    post, path = "/v1/files", request_body = CreateFileRequest,
+    responses((status = 201, body = FileUpload), (status = 400), (status = 403))
+)]
+pub async fn create_file(
+    State(state): State<AppState>,
+    axum::Extension(auth): axum::Extension<AuthUser>,
+    Json(body): Json<CreateFileRequest>,
+) -> AppResult<(StatusCode, Json<FileUpload>)> {
+    body.validate().map_err(|e| AppError::BadRequest(e.to_string()))?;
+    require_member_access(&auth, body.member_id, &state.pool).await?;
+
+    let kind = storage::kind_from_mime(&body.mime, &body.name);
+    let file_id = Uuid::new_v4();
+    let storage_key = format!("{}/{}/{}", body.member_id, file_id, body.name);
+
+    // uploaded_by = caller's display name (server-side, not client-supplied).
+    let uploader: (String,) = sqlx::query_as("SELECT name FROM users WHERE id = $1")
+        .bind(auth.id).fetch_one(&state.pool).await?;
+
+    sqlx::query(
+        "INSERT INTO files (id, workspace_id, member_id, meeting_id, name, mime, kind, size_bytes, storage_key, uploaded_by) \
+         SELECT $1, tm.workspace_id, $2, $3, $4, $5, $6::file_kind, $7, $8, $9 \
+         FROM team_members tm WHERE tm.id = $2",
+    )
+    .bind(file_id).bind(body.member_id).bind(body.meeting_id)
+    .bind(&body.name).bind(&body.mime).bind(kind).bind(body.size_bytes).bind(&storage_key)
+    .bind(&uploader.0)
+    .execute(&state.pool).await?;
+
+    let upload_url = storage::presign_put(&state.s3, &state.bucket, &storage_key, &body.mime).await;
+    Ok((StatusCode::CREATED, Json(FileUpload { file_id, upload_url })))
+}
+
+#[utoipa::path(
+    delete, path = "/v1/files/{id}",
+    params(("id" = uuid::Uuid, Path, description = "File id")),
+    responses((status = 204), (status = 403), (status = 404))
+)]
+pub async fn delete_file(
+    State(state): State<AppState>,
+    axum::Extension(auth): axum::Extension<AuthUser>,
+    Path(id): Path<Uuid>,
+) -> AppResult<StatusCode> {
+    let member_id = file_member(&state.pool, id).await?;
+    require_member_access(&auth, member_id, &state.pool).await?;
+
+    let key: (String,) = sqlx::query_as("SELECT storage_key FROM files WHERE id = $1")
+        .bind(id).fetch_one(&state.pool).await?;
+    if !key.0.starts_with("seed/") {
+        storage::delete_object(&state.s3, &state.bucket, &key.0).await; // best-effort
+    }
+    sqlx::query("DELETE FROM files WHERE id = $1").bind(id).execute(&state.pool).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[cfg(test)]
+mod tests {
+    use axum::body::Body;
+    use axum::http::{Request, StatusCode};
+    use http_body_util::BodyExt;
+    use tower::ServiceExt;
+
+    use crate::app::{build_router, AppState};
+    use crate::auth::password::hash_password;
+
+    fn app(pool: sqlx::PgPool) -> axum::Router {
+        build_router(AppState {
+            pool,
+            jwt_secret: "test-secret".into(),
+            web_origin: "http://localhost:3000".into(),
+            s3: crate::storage::client_from_env(),
+            bucket: crate::storage::bucket_from_env(),
+        })
+    }
+
+    /// Workspace + lead + team + member Anna. Returns (token, anna_id).
+    pub(super) async fn seed(pool: &sqlx::PgPool) -> (String, uuid::Uuid) {
+        let ws: (uuid::Uuid,) =
+            sqlx::query_as("INSERT INTO workspaces (name) VALUES ('T') RETURNING id")
+                .fetch_one(pool).await.unwrap();
+        let hash = hash_password("demo1234").unwrap();
+        let lead: (uuid::Uuid,) = sqlx::query_as(
+            "INSERT INTO users (workspace_id, email, password_hash, name, role, hue) \
+             VALUES ($1,'a@x.io',$2,'Lead','lead'::user_role,40) RETURNING id",
+        ).bind(ws.0).bind(&hash).fetch_one(pool).await.unwrap();
+        let team: (uuid::Uuid,) = sqlx::query_as(
+            "INSERT INTO teams (workspace_id, name, lead_id, default_cadence, visibility) \
+             VALUES ($1,'team',$2,'2w'::cadence,'private'::visibility) RETURNING id",
+        ).bind(ws.0).bind(lead.0).fetch_one(pool).await.unwrap();
+        let anna: (uuid::Uuid,) = sqlx::query_as(
+            "INSERT INTO team_members (workspace_id, team_id, name, role, email, joined, tz, mood_trend, status, tags, hue, joined_date) \
+             VALUES ($1,$2,'Анна','FE','anna@x.io','2023','Europe/Moscow','{6,7,8}','ok'::member_status,'{}',28,'2023-01-01') RETURNING id",
+        ).bind(ws.0).bind(team.0).fetch_one(pool).await.unwrap();
+        (login_token(pool, "a@x.io").await, anna.0)
+    }
+
+    /// A second lead+team+member, foreign to `seed`'s caller. Returns (token, member_id).
+    pub(super) async fn seed_foreign(pool: &sqlx::PgPool) -> (String, uuid::Uuid) {
+        let ws: (uuid::Uuid,) =
+            sqlx::query_as("INSERT INTO workspaces (name) VALUES ('F') RETURNING id")
+                .fetch_one(pool).await.unwrap();
+        let hash = hash_password("demo1234").unwrap();
+        let lead: (uuid::Uuid,) = sqlx::query_as(
+            "INSERT INTO users (workspace_id, email, password_hash, name, role, hue) \
+             VALUES ($1,'b@x.io',$2,'L2','lead'::user_role,40) RETURNING id",
+        ).bind(ws.0).bind(&hash).fetch_one(pool).await.unwrap();
+        let team: (uuid::Uuid,) = sqlx::query_as(
+            "INSERT INTO teams (workspace_id, name, lead_id, default_cadence, visibility) \
+             VALUES ($1,'t2',$2,'2w'::cadence,'private'::visibility) RETURNING id",
+        ).bind(ws.0).bind(lead.0).fetch_one(pool).await.unwrap();
+        let bob: (uuid::Uuid,) = sqlx::query_as(
+            "INSERT INTO team_members (workspace_id, team_id, name, role, email, joined, tz, mood_trend, status, tags, hue, joined_date) \
+             VALUES ($1,$2,'Боб','BE','bob@x.io','2023','Europe/Moscow','{5,5,5}','ok'::member_status,'{}',10,'2023-01-01') RETURNING id",
+        ).bind(ws.0).bind(team.0).fetch_one(pool).await.unwrap();
+        (login_token(pool, "b@x.io").await, bob.0)
+    }
+
+    pub(super) async fn login_token(pool: &sqlx::PgPool, email: &str) -> String {
+        let resp = app(pool.clone()).oneshot(
+            Request::builder().method("POST").uri("/v1/auth/login")
+                .header("content-type", "application/json")
+                .body(Body::from(format!(r#"{{"email":"{email}","password":"demo1234"}}"#)))
+                .unwrap(),
+        ).await.unwrap();
+        let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+        serde_json::from_slice::<serde_json::Value>(&bytes).unwrap()["token"].as_str().unwrap().to_string()
+    }
+
+    pub(super) async fn req(pool: sqlx::PgPool, method: &str, uri: &str, token: &str, body: Option<serde_json::Value>)
+        -> (StatusCode, serde_json::Value)
+    {
+        let mut b = Request::builder().method(method).uri(uri)
+            .header("authorization", format!("Bearer {token}"));
+        let body = match body {
+            Some(j) => { b = b.header("content-type", "application/json"); Body::from(j.to_string()) }
+            None => Body::empty(),
+        };
+        let resp = app(pool).oneshot(b.body(body).unwrap()).await.unwrap();
+        let status = resp.status();
+        let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+        (status, serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null))
+    }
+
+    fn file_body(member: uuid::Uuid) -> serde_json::Value {
+        serde_json::json!({ "member_id": member, "name": "report.pdf", "mime": "application/pdf", "size_bytes": 1024 })
+    }
+
+    #[sqlx::test(migrations = "../bt-db/migrations")]
+    async fn create_file_returns_upload_url_and_row(pool: sqlx::PgPool) {
+        let (token, anna) = seed(&pool).await;
+        let (status, json) = req(pool.clone(), "POST", "/v1/files", &token, Some(file_body(anna))).await;
+        assert_eq!(status, StatusCode::CREATED);
+        assert!(json["upload_url"].as_str().unwrap().contains("report.pdf"));
+        // a row exists with the derived kind + a non-seed storage_key
+        let row: (String, String) = sqlx::query_as("SELECT kind::text, storage_key FROM files WHERE id = ($1::text)::uuid")
+            .bind(json["file_id"].as_str().unwrap()).fetch_one(&pool).await.unwrap();
+        assert_eq!(row.0, "pdf");
+        assert!(!row.1.starts_with("seed/"));
+    }
+
+    #[sqlx::test(migrations = "../bt-db/migrations")]
+    async fn create_file_foreign_403_and_too_large_400(pool: sqlx::PgPool) {
+        let (token, _anna) = seed(&pool).await;
+        let (ftoken, bob) = seed_foreign(&pool).await;
+        let _ = ftoken;
+        let (s403, _) = req(pool.clone(), "POST", "/v1/files", &token, Some(file_body(bob))).await;
+        assert_eq!(s403, StatusCode::FORBIDDEN);
+
+        let (token2, anna) = (token, _anna);
+        let mut big = file_body(anna);
+        big["size_bytes"] = serde_json::json!(60_000_000); // > 50 MB
+        let (s400, _) = req(pool, "POST", "/v1/files", &token2, Some(big)).await;
+        assert_eq!(s400, StatusCode::BAD_REQUEST);
+    }
+
+    #[sqlx::test(migrations = "../bt-db/migrations")]
+    async fn delete_file_removes_row(pool: sqlx::PgPool) {
+        let (token, anna) = seed(&pool).await;
+        let (_, j) = req(pool.clone(), "POST", "/v1/files", &token, Some(file_body(anna))).await;
+        let id = j["file_id"].as_str().unwrap().to_string();
+        let (ds, _) = req(pool.clone(), "DELETE", &format!("/v1/files/{id}"), &token, None).await;
+        assert_eq!(ds, StatusCode::NO_CONTENT);
+        let cnt: (i64,) = sqlx::query_as("SELECT count(*) FROM files WHERE id = ($1::text)::uuid")
+            .bind(&id).fetch_one(&pool).await.unwrap();
+        assert_eq!(cnt.0, 0);
+    }
+
+    #[sqlx::test(migrations = "../bt-db/migrations")]
+    async fn delete_file_foreign_403(pool: sqlx::PgPool) {
+        let (token, anna) = seed(&pool).await;
+        let (ftoken, _bob) = seed_foreign(&pool).await;
+        let (_, j) = req(pool.clone(), "POST", "/v1/files", &token, Some(file_body(anna))).await;
+        let id = j["file_id"].as_str().unwrap().to_string();
+        let (ds, _) = req(pool, "DELETE", &format!("/v1/files/{id}"), &ftoken, None).await;
+        assert_eq!(ds, StatusCode::FORBIDDEN);
+    }
+}
