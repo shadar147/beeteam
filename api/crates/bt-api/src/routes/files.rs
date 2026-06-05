@@ -33,7 +33,7 @@ pub async fn create_file(
 
     let kind = storage::kind_from_mime(&body.mime, &body.name);
     let file_id = Uuid::new_v4();
-    let storage_key = format!("{}/{}/{}", body.member_id, file_id, body.name);
+    let storage_key = format!("{}/{}/{}", body.member_id, file_id, storage::safe_filename(&body.name));
 
     // uploaded_by = caller's display name (server-side, not client-supplied).
     let uploader: (String,) = sqlx::query_as("SELECT name FROM users WHERE id = $1")
@@ -126,7 +126,7 @@ pub async fn download_files_zip(
         for (name, key) in rows {
             if key.starts_with("seed/") { continue; }
             if let Some(bytes) = storage::get_object_bytes(&state.s3, &state.bucket, &key).await {
-                zw.start_file(&name, opts).map_err(|e| AppError::BadRequest(e.to_string()))?;
+                zw.start_file(&storage::safe_filename(&name), opts).map_err(|e| AppError::BadRequest(e.to_string()))?;
                 zw.write_all(&bytes).map_err(|e| AppError::BadRequest(e.to_string()))?;
             }
         }

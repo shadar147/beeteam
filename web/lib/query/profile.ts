@@ -59,6 +59,7 @@ export function useMemberGoals(id: string) {
 export function useMemberFiles(id: string) {
   return useQuery<FileMeta[]>({
     queryKey: ["member-files", id],
+    enabled: !!id,
     queryFn: async () => {
       const { data, error } = await api.GET("/v1/members/{id}/files", { params: { path: { id } } });
       if (error) throw error;

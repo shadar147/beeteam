@@ -64,6 +64,12 @@ pub async fn get_object_bytes(s3: &Client, bucket: &str, key: &str) -> Option<Ve
     Some(data.into_bytes().to_vec())
 }
 
+/// Basename of a client filename — strips any path components to avoid traversal / zip-slip.
+pub fn safe_filename(name: &str) -> String {
+    let base = name.rsplit(['/', '\\']).next().unwrap_or(name).trim();
+    if base.is_empty() || base == "." || base == ".." { "file".to_string() } else { base.to_string() }
+}
+
 /// Map a mime/filename to the `file_kind` enum value.
 pub fn kind_from_mime(mime: &str, name: &str) -> &'static str {
     let lower = name.to_lowercase();
@@ -79,7 +85,14 @@ pub fn kind_from_mime(mime: &str, name: &str) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::kind_from_mime;
+    use super::{kind_from_mime, safe_filename};
+    #[test]
+    fn safe_filename_strips_paths() {
+        assert_eq!(safe_filename("../../etc/passwd"), "passwd");
+        assert_eq!(safe_filename("report.pdf"), "report.pdf");
+        assert_eq!(safe_filename("a\\b\\c.txt"), "c.txt");
+        assert_eq!(safe_filename(".."), "file");
+    }
     #[test]
     fn maps_kinds() {
         assert_eq!(kind_from_mime("application/pdf", "x.pdf"), "pdf");
