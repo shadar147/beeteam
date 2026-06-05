@@ -3,13 +3,26 @@ import { useMemo, useState } from "react";
 import { SegControl } from "@/components/SegControl";
 import { FileRow } from "@/components/FileRow";
 import { FileTile } from "@/components/FileTile";
+import { FileDropzone } from "@/components/FileDropzone";
 import { humanSize, FILE_KINDS } from "@/lib/files";
 import { useMemberFiles } from "@/lib/query/profile";
+import { downloadFile, useDeleteFile, zipUrl, DemoFileError } from "@/lib/query/files";
 
 export function FilesTab({ memberId }: { memberId: string }) {
   const files = useMemberFiles(memberId);
   const [kind, setKind] = useState("all");
   const [view, setView] = useState("list");
+  const del = useDeleteFile(memberId);
+  const [toast, setToast] = useState<string | null>(null);
+
+  async function onDownload(id: string) {
+    setToast(null);
+    try { await downloadFile(id); }
+    catch (e) { setToast(e instanceof DemoFileError ? (e as DemoFileError).message : "Не удалось скачать файл"); }
+  }
+  function onDelete(id: string) {
+    if (confirm("Удалить файл?")) del.mutate(id);
+  }
 
   const all = files.data ?? [];
   const shown = useMemo(() => (kind === "all" ? all : all.filter((f) => f.kind === kind)), [all, kind]);
@@ -39,7 +52,7 @@ export function FilesTab({ memberId }: { memberId: string }) {
             value={view}
             onChange={setView}
           />
-          <button type="button" className="rounded-md border border-line px-3 py-1.5 text-[13px] text-ink-2">Скачать .zip</button>
+          <a href={zipUrl(memberId)} className="rounded-md border border-line px-3 py-1.5 text-[13px] text-ink-2">Скачать .zip</a>
         </div>
       </div>
 
@@ -60,23 +73,23 @@ export function FilesTab({ memberId }: { memberId: string }) {
         </div>
       </div>
 
+      {toast && <div className="rounded-md border border-warn/30 bg-warn-soft px-3 py-2 text-[12px] text-warn">{toast}</div>}
+
       {shown.length === 0 ? (
         <div className="rounded-lg border border-dashed border-line-strong bg-bg-tint p-10 text-center text-[13px] text-ink-3">
           Файлов пока нет
         </div>
       ) : view === "list" ? (
         <div className="rounded-lg border border-line bg-bg-elev">
-          {shown.map((f) => <FileRow key={f.id} file={f} />)}
+          {shown.map((f) => <FileRow key={f.id} file={f} onDownload={onDownload} onDelete={onDelete} />)}
         </div>
       ) : (
         <div className="grid grid-cols-4 gap-3">
-          {shown.map((f) => <FileTile key={f.id} file={f} />)}
+          {shown.map((f) => <FileTile key={f.id} file={f} onDownload={onDownload} />)}
         </div>
       )}
 
-      <div className="rounded-lg border border-dashed border-line-strong bg-bg-tint p-6 text-center text-[12px] text-ink-3">
-        Перетащите файлы сюда, чтобы загрузить (скоро)
-      </div>
+      <FileDropzone memberId={memberId} onUploaded={() => files.refetch()} />
     </div>
   );
 }

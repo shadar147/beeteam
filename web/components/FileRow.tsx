@@ -2,7 +2,7 @@ import { FileGlyph } from "./FileGlyph";
 import { humanSize } from "@/lib/files";
 import type { FileMeta } from "@/lib/query/profile";
 
-export function FileRow({ file }: { file: FileMeta }) {
+export function FileRow({ file, onDownload, onDelete }: { file: FileMeta; onDownload?: (id: string) => void; onDelete?: (id: string) => void }) {
   return (
     <div className="flex items-center gap-3 border-b border-line-2 px-3 py-2.5 last:border-b-0 hover:bg-bg-tint">
       <FileGlyph kind={file.kind} size={36} />
@@ -14,7 +14,14 @@ export function FileRow({ file }: { file: FileMeta }) {
         </div>
       </div>
       <span className="text-[12px] text-ink-3 tabular">{humanSize(file.size_bytes)}</span>
-      <button type="button" aria-label="Скачать" className="rounded px-2 py-1 text-ink-3 hover:bg-bg-sunken">↓</button>
+      {onDownload && (
+        <button type="button" aria-label="Скачать" onClick={() => onDownload(file.id)}
+          className="rounded px-2 py-1 text-ink-3 hover:bg-bg-sunken">↓</button>
+      )}
+      {onDelete && (
+        <button type="button" aria-label="Удалить" onClick={() => onDelete(file.id)}
+          className="rounded px-2 py-1 text-ink-3 hover:bg-bg-sunken">✕</button>
+      )}
     </div>
   );
 }
