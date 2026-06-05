@@ -6,6 +6,14 @@ import type { MeetingDetail, TemplateDetail } from "@/lib/query/meetings";
 
 vi.mock("@/lib/query/profile", () => ({
   useMeeting: () => ({ data: MEETING, isLoading: false, isError: false }),
+  useMemberFiles: () => ({ data: [], refetch: () => {} }),
+}));
+vi.mock("@/lib/query/files", () => ({
+  downloadFile: vi.fn(),
+  useDeleteFile: () => ({ mutate: vi.fn() }),
+}));
+vi.mock("@/components/FileDropzone", () => ({
+  FileDropzone: () => null,
 }));
 vi.mock("@/lib/query/meetings", async (orig) => {
   const actual = await orig<typeof import("@/lib/query/meetings")>();

@@ -21,9 +21,9 @@ describe("FieldControl", () => {
     expect(onMood).toHaveBeenCalledWith("😄", 8);
   });
 
-  it("file kind renders a disabled placeholder", () => {
+  it("file kind renders a note pointing to the attachments section", () => {
     const fileDef: FieldDef = { ...textDef, id: "f2", kind: "file", title: "Файл" };
     render(<FieldControl field={fileDef} value="" moodScore={null} onChange={() => {}} onMood={() => {}} />);
-    expect(screen.getByText(/Загрузка файлов появится позже/)).toBeInTheDocument();
+    expect(screen.getByText(/Используйте раздел «Вложения» ниже/)).toBeInTheDocument();
   });
 });

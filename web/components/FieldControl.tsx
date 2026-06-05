@@ -92,10 +92,16 @@ export function FieldControl({
       );
       break;
     case "file":
+      control = (
+        <div className="rounded-md border border-dashed border-line-strong bg-bg-tint p-3 text-center text-[12px] text-ink-3">
+          Используйте раздел «Вложения» ниже
+        </div>
+      );
+      break;
     default:
       control = (
         <div className="rounded-md border border-dashed border-line-strong bg-bg-tint p-3 text-center text-[12px] text-ink-3">
-          Загрузка файлов появится позже
+          Неизвестный тип поля
         </div>
       );
   }

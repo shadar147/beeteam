@@ -1,12 +1,14 @@
 "use client";
 import { useEffect, useReducer, useState } from "react";
-import { useMeeting } from "@/lib/query/profile";
+import { useMeeting, useMemberFiles } from "@/lib/query/profile";
 import {
   useTemplate, useMeetingAutosave, useCompleteMeeting, useDeleteMeeting,
 } from "@/lib/query/meetings";
 import {
   formFromMeeting, formToPatch, meetingFormReducer, toLocalInput, fromLocalInput, type MeetingForm,
 } from "@/lib/meeting-form";
+import { downloadFile, useDeleteFile } from "@/lib/query/files";
+import { FileDropzone } from "@/components/FileDropzone";
 import { FieldControl } from "./FieldControl";
 import { Pill } from "./Pill";
 
@@ -33,6 +35,9 @@ export function MeetingDrawer({ meetingId, onClose }: { meetingId: string; onClo
   const autosave = useMeetingAutosave(meetingId, memberId);
   const complete = useCompleteMeeting();
   const del = useDeleteMeeting();
+  const memberFiles = useMemberFiles(meeting.data?.member_id ?? "");
+  const delFile = useDeleteFile(meeting.data?.member_id ?? "");
+  const attachments = (memberFiles.data ?? []).filter((f) => f.meeting_id === meetingId);
 
   const [form, dispatch] = useReducer(meetingFormReducer, EMPTY);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -92,20 +97,45 @@ export function MeetingDrawer({ meetingId, onClose }: { meetingId: string; onClo
               <button className="underline" onClick={() => meeting.refetch()}>Повторить</button>
             </div>
           ) : (
-            (template.data?.fields ?? []).map((f) => {
-              const key = TITLE_TO_FIELD[f.title];
-              const value = key ? String(form[key] ?? "") : "";
-              return (
-                <FieldControl
-                  key={f.id}
-                  field={f}
-                  value={f.kind === "mood" ? form.mood : value}
-                  moodScore={form.mood_score}
-                  onChange={(v) => key && edit(key, v)}
-                  onMood={(emoji, score) => editMany({ mood: emoji, mood_score: score })}
-                />
-              );
-            })
+            <>
+              {(template.data?.fields ?? []).map((f) => {
+                const key = TITLE_TO_FIELD[f.title];
+                const value = key ? String(form[key] ?? "") : "";
+                return (
+                  <FieldControl
+                    key={f.id}
+                    field={f}
+                    value={f.kind === "mood" ? form.mood : value}
+                    moodScore={form.mood_score}
+                    onChange={(v) => key && edit(key, v)}
+                    onMood={(emoji, score) => editMany({ mood: emoji, mood_score: score })}
+                  />
+                );
+              })}
+              <div className="mt-4 border-t border-line pt-3">
+                <div className="mb-2 text-[12px] font-medium uppercase tracking-wide text-ink-3">Вложения</div>
+                {attachments.length === 0 ? (
+                  <p className="text-[12px] text-ink-3">Вложений нет</p>
+                ) : (
+                  <ul className="mb-2 space-y-1">
+                    {attachments.map((f) => (
+                      <li key={f.id} className="flex items-center gap-2 text-[13px] text-ink-2">
+                        <button type="button" className="truncate text-left hover:underline" onClick={() => downloadFile(f.id).catch(() => {})}>{f.name}</button>
+                        <button type="button" aria-label="Удалить" className="ml-auto text-ink-3 hover:text-ink"
+                          onClick={() => { if (confirm("Удалить файл?")) delFile.mutate(f.id); }}>✕</button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {meeting.data && (
+                  <FileDropzone
+                    memberId={meeting.data.member_id}
+                    meetingId={meetingId}
+                    onUploaded={() => memberFiles.refetch()}
+                  />
+                )}
+              </div>
+            </>
           )}
         </div>
 
