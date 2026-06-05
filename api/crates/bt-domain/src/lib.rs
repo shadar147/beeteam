@@ -175,6 +175,7 @@ pub struct FileMeta {
     pub mime: String,
     pub kind: String,
     pub size_bytes: i64,
+    pub meeting_id: Option<uuid::Uuid>,
     pub meeting_label: Option<String>,
     pub uploaded_by: String,
     pub created_at: chrono::DateTime<chrono::Utc>,

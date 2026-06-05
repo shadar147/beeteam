@@ -192,10 +192,10 @@ pub async fn list_member_files(
     require_member_access(&auth, member_id, &state.pool).await?;
 
     let rows: Vec<(
-        uuid::Uuid, String, String, String, i64, String,
+        uuid::Uuid, String, String, String, i64, Option<uuid::Uuid>, String,
         chrono::DateTime<chrono::Utc>, Option<chrono::DateTime<chrono::Utc>>,
     )> = sqlx::query_as(
-        "SELECT f.id, f.name, f.mime, f.kind::text, f.size_bytes, f.uploaded_by, f.created_at, m.date \
+        "SELECT f.id, f.name, f.mime, f.kind::text, f.size_bytes, f.meeting_id, f.uploaded_by, f.created_at, m.date \
          FROM files f LEFT JOIN meetings m ON m.id = f.meeting_id \
          WHERE f.member_id = $1 ORDER BY f.created_at DESC",
     )
@@ -206,9 +206,9 @@ pub async fn list_member_files(
     let out = rows
         .into_iter()
         .map(|r| FileMeta {
-            id: r.0, name: r.1, mime: r.2, kind: r.3, size_bytes: r.4, uploaded_by: r.5,
-            created_at: r.6,
-            meeting_label: r.7.map(|d| format!("1-2-1 от {}", d.format("%d.%m.%Y"))),
+            id: r.0, name: r.1, mime: r.2, kind: r.3, size_bytes: r.4,
+            meeting_id: r.5, uploaded_by: r.6, created_at: r.7,
+            meeting_label: r.8.map(|d| format!("1-2-1 от {}", d.format("%d.%m.%Y"))),
         })
         .collect();
     Ok(Json(out))
