@@ -324,6 +324,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/teams/{id}/calendar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["team_calendar"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/teams/{id}/members": {
         parameters: {
             query?: never;
@@ -376,6 +392,21 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** @description One meeting row for the CalendarScreen (team-level view). */
+        CalendarMeeting: {
+            /** Format: date-time */
+            date: string;
+            /** Format: int32 */
+            duration_min: number;
+            /** Format: int32 */
+            hue: number;
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            member_id: string;
+            member_name: string;
+            state: string;
+        };
         Competency: {
             /** Format: uuid */
             id: string;
@@ -1518,6 +1549,48 @@ export interface operations {
                 };
             };
             /** @description Member not on the caller's team */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    team_calendar: {
+        parameters: {
+            query: {
+                /** @description RFC3339 start (inclusive) */
+                from: string;
+                /** @description RFC3339 end (exclusive) */
+                to: string;
+            };
+            header?: never;
+            path: {
+                /** @description Team id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Team meetings in range */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarMeeting"][];
+                };
+            };
+            /** @description Invalid from/to */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not the team's lead */
             403: {
                 headers: {
                     [name: string]: unknown;
