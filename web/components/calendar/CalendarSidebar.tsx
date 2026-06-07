@@ -1,7 +1,7 @@
 "use client";
 import { cn } from "@/lib/utils";
 import { Avatar } from "@/components/Avatar";
-import { RU_DOW, RU_MONTHS, sameDay, STATE_META } from "@/lib/calendar";
+import { RU_DOW, RU_MONTHS, STATE_META } from "@/lib/calendar";
 import type { CalendarMeeting } from "@/lib/query/calendar";
 
 function hhmm(iso: string) {
