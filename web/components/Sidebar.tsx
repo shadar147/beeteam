@@ -1,5 +1,5 @@
 "use client";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { Logo } from "./Logo";
 import { Avatar } from "./Avatar";
 import { NavItem } from "./NavItem";
@@ -7,11 +7,11 @@ import { Bell, LogOut } from "lucide-react";
 import type { SessionUser } from "@/lib/auth";
 
 const TEAM_NAV = [
-  { id: "team", label: "Моя команда", icon: "team", count: 8, active: true, disabled: false },
-  { id: "calendar", label: "Календарь", icon: "calendar", count: 4, active: false, disabled: true },
-  { id: "grades", label: "Грейды", icon: "layers", active: false, disabled: true },
-  { id: "fields", label: "Конструктор полей", icon: "fields", active: false, disabled: true },
-  { id: "export", label: "Экспорт", icon: "download", active: false, disabled: true },
+  { id: "team", label: "Моя команда", icon: "team", count: 8, href: "/", disabled: false },
+  { id: "calendar", label: "Календарь", icon: "calendar", count: 4, href: "/calendar", disabled: false },
+  { id: "grades", label: "Грейды", icon: "layers", disabled: true },
+  { id: "fields", label: "Конструктор полей", icon: "fields", disabled: true },
+  { id: "export", label: "Экспорт", icon: "download", disabled: true },
 ] as const;
 
 const ADMIN_NAV = [
@@ -22,6 +22,7 @@ const ADMIN_NAV = [
 
 export function Sidebar({ user }: { user: SessionUser }) {
   const router = useRouter();
+  const pathname = usePathname();
 
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -40,9 +41,17 @@ export function Sidebar({ user }: { user: SessionUser }) {
 
       <div className="flex flex-col gap-0.5">
         <div className="px-2.5 py-1 text-[10.5px] font-semibold uppercase tracking-wide text-ink-4">Команда</div>
-        {TEAM_NAV.map((n) => (
-          <NavItem key={n.id} label={n.label} icon={n.icon} count={"count" in n ? n.count : undefined} active={n.active} disabled={n.disabled} />
-        ))}
+        {TEAM_NAV.map((n) => {
+          const href = "href" in n ? n.href : undefined;
+          const active = href
+            ? href === "/"
+              ? pathname === "/"
+              : pathname.startsWith(href)
+            : false;
+          return (
+            <NavItem key={n.id} label={n.label} icon={n.icon} count={"count" in n ? n.count : undefined} active={active} disabled={n.disabled} href={href} />
+          );
+        })}
       </div>
 
       <div className="flex flex-col gap-0.5">
