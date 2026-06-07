@@ -15,16 +15,28 @@ describe("CalendarMonth", () => {
   it("shows up to 3 chips + overflow on a busy day", () => {
     const day = "2026-06-10T09:00:00Z";
     const meetings = [mtg("a", day, "Анна Лебедева"), mtg("b", day, "Борис Петров"), mtg("c", day, "Вера Сидорова"), mtg("d", day, "Глеб Орлов")];
-    render(<CalendarMonth month={month} today={today} meetings={meetings} onSelect={() => {}} />);
+    render(<CalendarMonth month={month} today={today} meetings={meetings} onSelect={() => {}} onOpenDay={() => {}} />);
     expect(screen.getByText("Анна Л.")).toBeInTheDocument();
     expect(screen.getByText(/\+1 ещё/)).toBeInTheDocument(); // 4 → 3 chips + "+1 ещё"
   });
 
   it("clicking a chip calls onSelect with the meeting id", () => {
     const onSelect = vi.fn();
-    render(<CalendarMonth month={month} today={today} meetings={[mtg("m1", "2026-06-10T09:00:00Z")]} onSelect={onSelect} />);
+    render(<CalendarMonth month={month} today={today} meetings={[mtg("m1", "2026-06-10T09:00:00Z")]} onSelect={onSelect} onOpenDay={() => {}} />);
     fireEvent.click(screen.getByText("Анна Л."));
     expect(onSelect).toHaveBeenCalledWith("m1");
+  });
+
+  it("clicking «+N ещё» calls onOpenDay with a Date for that day", () => {
+    const onOpenDay = vi.fn();
+    const day = "2026-06-10T09:00:00Z";
+    const meetings = [mtg("a", day, "Анна Лебедева"), mtg("b", day, "Борис Петров"), mtg("c", day, "Вера Сидорова"), mtg("d", day, "Глеб Орлов")];
+    render(<CalendarMonth month={month} today={today} meetings={meetings} onSelect={() => {}} onOpenDay={onOpenDay} />);
+    fireEvent.click(screen.getByText(/\+1 ещё/));
+    expect(onOpenDay).toHaveBeenCalledTimes(1);
+    const arg = onOpenDay.mock.calls[0][0] as Date;
+    expect(arg).toBeInstanceOf(Date);
+    expect(arg.getDate()).toBe(10);
   });
 });
 

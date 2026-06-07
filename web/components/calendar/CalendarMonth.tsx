@@ -4,12 +4,13 @@ import { RU_DOW, sameDay, shortName, STATE_META } from "@/lib/calendar";
 import type { CalendarMeeting } from "@/lib/query/calendar";
 
 export function CalendarMonth({
-  month, today, meetings, onSelect,
+  month, today, meetings, onSelect, onOpenDay,
 }: {
   month: Date;
   today: Date;
   meetings: CalendarMeeting[];
   onSelect: (id: string) => void;
+  onOpenDay: (day: Date) => void;
 }) {
   const year = month.getFullYear();
   const m = month.getMonth();
@@ -39,7 +40,14 @@ export function CalendarMonth({
                 inMonth ? "border-line-2 bg-bg-elev" : "border-transparent bg-bg-tint/40",
                 isToday && "ring-1 ring-brand",
               )}>
-              <div className={cn("mb-0.5 text-right text-[11px] tabular", inMonth ? "text-ink-3" : "text-ink-4")}>{d.getDate()}</div>
+              {dayMtgs.length > 0 ? (
+                <button type="button" onClick={() => onOpenDay(d)}
+                  className={cn("mb-0.5 w-full text-right text-[11px] tabular hover:text-ink cursor-pointer", inMonth ? "text-ink-3" : "text-ink-4")}>
+                  {d.getDate()}
+                </button>
+              ) : (
+                <div className={cn("mb-0.5 text-right text-[11px] tabular", inMonth ? "text-ink-3" : "text-ink-4")}>{d.getDate()}</div>
+              )}
               <div className="space-y-0.5">
                 {shown.map((mt) => (
                   <button key={mt.id} type="button" onClick={() => onSelect(mt.id)}
@@ -48,7 +56,12 @@ export function CalendarMonth({
                     <span className="truncate">{shortName(mt.member_name)}</span>
                   </button>
                 ))}
-                {extra > 0 && <div className="px-1 text-[10px] text-ink-3">+{extra} ещё</div>}
+                {extra > 0 && (
+                  <button type="button" onClick={() => onOpenDay(d)}
+                    className="px-1 text-[10px] text-ink-3 hover:text-ink">
+                    +{extra} ещё
+                  </button>
+                )}
               </div>
             </div>
           );
