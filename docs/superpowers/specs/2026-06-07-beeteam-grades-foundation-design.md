@@ -44,7 +44,7 @@ Sidebar «Грейды» enabled (route-aware, like «Календарь»).
 
 ## Backend
 
-### Migration `0005_grades.sql`
+### Migration `0004_grades.sql`
 ```sql
 CREATE TABLE disciplines (
   id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -151,7 +151,7 @@ loading «Загрузка…»; error inline «Не удалось загруз
 ## Scope
 
 ### In scope
-Backend: `0005_grades` (disciplines/grade_levels/grade_blocks/matrix_cells) + seed from grades-data.js (5 disciplines, IC1–IC7, bands) + `GET /v1/grades/framework` + OpenAPI/types. Frontend: `useGradesFramework`; `GradesClient` + `GradeLevels`/`GradeMatrix`/`GradeBands` + cell Modal; `/grades` route; Sidebar enablement; loading/error/empty.
+Backend: `0004_grades` (disciplines/grade_levels/grade_blocks/matrix_cells) + seed from grades-data.js (5 disciplines, IC1–IC7, bands) + `GET /v1/grades/framework` + OpenAPI/types. Frontend: `useGradesFramework`; `GradesClient` + `GradeLevels`/`GradeMatrix`/`GradeBands` + cell Modal; `/grades` route; Sidebar enablement; loading/error/empty.
 
 ### Deferred (later grades sub-slices)
 Matrix editor / «+ Новая дисциплина» / edit mode (#5); addon tracks (Go/Rust/iOS/Android); member grade assignment + profile «Грейд» tab (#2); evidence tagging in the drawer (#3); Performance Review flow (#4); calibration + absolute salary numbers + `hr_admin` gating (#5).
@@ -160,7 +160,7 @@ Matrix editor / «+ Новая дисциплина» / edit mode (#5); addon tr
 Read-only and workspace-global: the slice displays the company's grade framework. It does not assign grades to members, edit the matrix, or touch meetings/competencies. No per-member or per-team data.
 
 ## Build order (vertical sub-steps)
-1. Migration `0005_grades` + seed (levels/disciplines/blocks/cells ported from grades-data.js) + seed test; re-seed dev DB.
+1. Migration `0004_grades` + seed (levels/disciplines/blocks/cells ported from grades-data.js) + seed test; re-seed dev DB.
 2. DTOs + `GET /v1/grades/framework` + tests.
 3. OpenAPI registration + `pnpm gen:api`.
 4. `useGradesFramework` hook.
