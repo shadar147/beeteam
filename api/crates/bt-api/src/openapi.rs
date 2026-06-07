@@ -31,6 +31,7 @@ use utoipa::OpenApi;
         crate::routes::files::download_file,
         crate::routes::files::delete_file,
         crate::routes::files::download_files_zip,
+        crate::routes::teams::team_calendar,
     ),
     components(schemas(
         bt_domain::Health,
@@ -61,6 +62,7 @@ use utoipa::OpenApi;
         bt_domain::UpdateCompetencyRequest,
         bt_domain::FieldDef,
         bt_domain::TemplateDetail,
+        bt_domain::CalendarMeeting,
     )),
     info(title = "BeeTeam API", version = "0.1.0")
 )]
