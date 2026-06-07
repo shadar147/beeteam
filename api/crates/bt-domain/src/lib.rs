@@ -282,6 +282,18 @@ pub struct FileDownload {
     pub download_url: String,
 }
 
+/// One meeting row for the CalendarScreen (team-level view).
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct CalendarMeeting {
+    pub id: uuid::Uuid,
+    pub member_id: uuid::Uuid,
+    pub member_name: String,
+    pub hue: i32,
+    pub date: chrono::DateTime<chrono::Utc>,
+    pub state: String,
+    pub duration_min: i32,
+}
+
 /// A meeting form field definition (from a template), for rendering the drawer.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct FieldDef {

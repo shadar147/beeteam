@@ -36,6 +36,7 @@ pub fn build_router(state: AppState) -> Router {
         .route("/v1/auth/me", get(routes::auth::me))
         .route("/v1/teams/:id/members", get(routes::teams::list_members))
         .route("/v1/teams/:id/stats", get(routes::teams::team_stats))
+        .route("/v1/teams/:id/calendar", get(routes::teams::team_calendar))
         .route("/v1/members/:id", get(routes::members::get_member))
         .route("/v1/members/:id/meetings", get(routes::members::list_member_meetings))
         .route("/v1/members/:id/goals", get(routes::members::get_member_goals))

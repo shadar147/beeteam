@@ -1,6 +1,6 @@
 use axum::extract::{Path, Query, State};
 use axum::Json;
-use bt_domain::{MemberRow, TeamStats};
+use bt_domain::{CalendarMeeting, MemberRow, TeamStats};
 use serde::Deserialize;
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -189,6 +189,69 @@ pub async fn team_stats(
     }))
 }
 
+#[derive(Debug, serde::Deserialize)]
+pub struct CalendarRange {
+    pub from: String,
+    pub to: String,
+}
+
+#[utoipa::path(
+    get,
+    path = "/v1/teams/{id}/calendar",
+    params(
+        ("id" = uuid::Uuid, Path, description = "Team id"),
+        ("from" = String, Query, description = "RFC3339 start (inclusive)"),
+        ("to" = String, Query, description = "RFC3339 end (exclusive)"),
+    ),
+    responses(
+        (status = 200, description = "Team meetings in range", body = [CalendarMeeting]),
+        (status = 400, description = "Invalid from/to"),
+        (status = 403, description = "Not the team's lead"),
+    )
+)]
+pub async fn team_calendar(
+    State(state): State<AppState>,
+    axum::Extension(auth): axum::Extension<AuthUser>,
+    Path(team_id): Path<Uuid>,
+    Query(range): Query<CalendarRange>,
+) -> AppResult<Json<Vec<CalendarMeeting>>> {
+    require_team_access(&auth, team_id, &state.pool).await?;
+
+    let from = chrono::DateTime::parse_from_rfc3339(&range.from)
+        .map_err(|_| AppError::BadRequest("invalid 'from'".into()))?
+        .with_timezone(&chrono::Utc);
+    let to = chrono::DateTime::parse_from_rfc3339(&range.to)
+        .map_err(|_| AppError::BadRequest("invalid 'to'".into()))?
+        .with_timezone(&chrono::Utc);
+
+    let rows: Vec<CalendarMeeting> = sqlx::query_as::<_, (
+        uuid::Uuid, uuid::Uuid, String, i32, chrono::DateTime<chrono::Utc>, String, i32,
+    )>(
+        "SELECT m.id, m.member_id, tm.name, tm.hue, m.date, m.state::text, m.duration_min \
+         FROM meetings m JOIN team_members tm ON tm.id = m.member_id \
+         WHERE tm.team_id = $1 AND m.date >= $2 AND m.date < $3 \
+         ORDER BY m.date",
+    )
+    .bind(team_id)
+    .bind(from)
+    .bind(to)
+    .fetch_all(&state.pool)
+    .await?
+    .into_iter()
+    .map(|r| CalendarMeeting {
+        id: r.0,
+        member_id: r.1,
+        member_name: r.2,
+        hue: r.3,
+        date: r.4,
+        state: r.5,
+        duration_min: r.6,
+    })
+    .collect();
+
+    Ok(Json(rows))
+}
+
 #[cfg(test)]
 mod tests {
     use axum::body::Body;
@@ -315,6 +378,85 @@ mod tests {
             .bind(ws2.0).bind(hash).execute(&pool).await.unwrap();
         let token = login_token(&pool, "other@x.io").await;
         let (status, _) = get_members(pool, &token, team, "").await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+    }
+
+    async fn get_calendar(pool: sqlx::PgPool, token: &str, team_id: uuid::Uuid, query: &str)
+        -> (StatusCode, serde_json::Value)
+    {
+        let uri = format!("/v1/teams/{team_id}/calendar{query}");
+        let resp = app(pool).oneshot(
+            Request::builder().method("GET").uri(uri)
+                .header("authorization", format!("Bearer {token}"))
+                .body(Body::empty()).unwrap()
+        ).await.unwrap();
+        let status = resp.status();
+        let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+        (status, serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null))
+    }
+
+    /// Insert a meeting for the first member of `team_id` at the given RFC3339 instant.
+    async fn seed_meeting_at(pool: &sqlx::PgPool, team_id: uuid::Uuid, when_rfc3339: &str) {
+        let m: (uuid::Uuid, uuid::Uuid) = sqlx::query_as(
+            "SELECT tm.id, tm.workspace_id FROM team_members tm WHERE tm.team_id = $1 ORDER BY tm.name LIMIT 1",
+        ).bind(team_id).fetch_one(pool).await.unwrap();
+        let when = chrono::DateTime::parse_from_rfc3339(when_rfc3339).unwrap()
+            .with_timezone(&chrono::Utc);
+        sqlx::query(
+            "INSERT INTO meetings (workspace_id, member_id, date, state, duration_min) \
+             VALUES ($1, $2, $3, 'planned'::meeting_state, 45)",
+        ).bind(m.1).bind(m.0).bind(when).execute(pool).await.unwrap();
+    }
+
+    #[sqlx::test(migrations = "../bt-db/migrations")]
+    async fn calendar_returns_in_range_with_member(pool: sqlx::PgPool) {
+        let (token, team) = seed_team(&pool).await;
+        seed_meeting_at(&pool, team, "2026-06-15T10:00:00Z").await; // in range
+        seed_meeting_at(&pool, team, "2026-08-01T10:00:00Z").await; // out of range
+        let (status, json) = get_calendar(
+            pool, &token, team, "?from=2026-06-01T00:00:00Z&to=2026-07-01T00:00:00Z",
+        ).await;
+        assert_eq!(status, StatusCode::OK);
+        let arr = json.as_array().unwrap();
+        assert_eq!(arr.len(), 1);
+        assert_eq!(arr[0]["member_name"], "Алиса");
+        assert!(arr[0]["hue"].is_number());
+        assert_eq!(arr[0]["state"], "planned");
+    }
+
+    #[sqlx::test(migrations = "../bt-db/migrations")]
+    async fn calendar_range_boundaries(pool: sqlx::PgPool) {
+        let (token, team) = seed_team(&pool).await;
+        seed_meeting_at(&pool, team, "2026-06-01T00:00:00Z").await; // == from → included
+        seed_meeting_at(&pool, team, "2026-07-01T00:00:00Z").await; // == to → excluded
+        let (_, json) = get_calendar(
+            pool, &token, team, "?from=2026-06-01T00:00:00Z&to=2026-07-01T00:00:00Z",
+        ).await;
+        assert_eq!(json.as_array().unwrap().len(), 1);
+    }
+
+    #[sqlx::test(migrations = "../bt-db/migrations")]
+    async fn calendar_bad_range_400(pool: sqlx::PgPool) {
+        let (token, team) = seed_team(&pool).await;
+        let (status, _) = get_calendar(pool, &token, team, "?from=nope&to=also-nope").await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+    }
+
+    #[sqlx::test(migrations = "../bt-db/migrations")]
+    async fn calendar_foreign_lead_403(pool: sqlx::PgPool) {
+        let (_token, team) = seed_team(&pool).await;
+        // a different lead in another workspace
+        let ws2: (uuid::Uuid,) = sqlx::query_as("INSERT INTO workspaces (name) VALUES ('U') RETURNING id")
+            .fetch_one(&pool).await.unwrap();
+        let hash = hash_password("demo1234").unwrap();
+        sqlx::query(
+            "INSERT INTO users (workspace_id, email, password_hash, name, role, hue) \
+             VALUES ($1,'other@x.io',$2,'Other','lead'::user_role,40)",
+        ).bind(ws2.0).bind(hash).execute(&pool).await.unwrap();
+        let token = login_token(&pool, "other@x.io").await;
+        let (status, _) = get_calendar(
+            pool, &token, team, "?from=2026-06-01T00:00:00Z&to=2026-07-01T00:00:00Z",
+        ).await;
         assert_eq!(status, StatusCode::FORBIDDEN);
     }
 }
