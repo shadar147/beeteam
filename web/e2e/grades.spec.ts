@@ -16,15 +16,8 @@ test("navigate to grades and open a matrix cell", async ({ page }) => {
   // discipline tabs + matrix grid (default tab = Матрица).
   await expect(page.getByRole("button", { name: "Backend" })).toBeVisible({ timeout: 10_000 });
   await expect(page.getByText("Серверный стек")).toBeVisible();
-  // click a matrix cell → detail modal.
-  const cellByText = page.getByText("Знает синтаксис языка", { exact: false }).first();
-  const hasCellText = await cellByText.isVisible().catch(() => false);
-  if (hasCellText) {
-    await cellByText.click();
-  } else {
-    // Fallback: click first table button regardless of text.
-    await page.locator("table button").first().click();
-  }
+  // click a seeded matrix cell → detail modal (the heading exists only in the Modal).
+  await page.getByText("Знает синтаксис языка", { exact: false }).first().click();
   await expect(page.getByText(/Что должен демонстрировать/)).toBeVisible({ timeout: 10_000 });
 });
 
