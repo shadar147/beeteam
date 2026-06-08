@@ -29,7 +29,7 @@ describe("Grade views", () => {
     render(<GradeLevels levels={LEVELS} />);
     expect(screen.getByText("IC1")).toBeInTheDocument();
     expect(screen.getByText("Trainee")).toBeInTheDocument();
-    expect(screen.getByText("менеджерский трек")).toBeInTheDocument(); // only IC5 is mgr
+    expect(screen.getByText("+ менедж. трек")).toBeInTheDocument(); // only IC5 is mgr
   });
 
   it("GradeMatrix renders block rows and opens a cell modal", () => {

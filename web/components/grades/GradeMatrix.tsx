@@ -1,11 +1,10 @@
 "use client";
 import { useState } from "react";
-import { cn } from "@/lib/utils";
 import { Modal } from "@/components/Modal";
 import type { Discipline, GradeLevel, MatrixCell } from "@/lib/query/grades";
 
 export function GradeMatrix({ discipline, levels }: { discipline: Discipline; levels: GradeLevel[] }) {
-  const [open, setOpen] = useState<{ block: string; code: string; text: string } | null>(null);
+  const [open, setOpen] = useState<{ block: string; code: string; name: string; text: string } | null>(null);
   const cols = [...levels].sort((a, b) => a.ord - b.ord);
 
   function cellOf(block: { cells: MatrixCell[] }, ord: number) {
@@ -13,44 +12,63 @@ export function GradeMatrix({ discipline, levels }: { discipline: Discipline; le
   }
 
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full border-collapse text-left">
-        <thead>
-          <tr>
-            <th className="sticky left-0 z-10 bg-bg-elev p-2 text-[11px] font-medium text-ink-3">Блок</th>
-            {cols.map((l) => (
-              <th key={l.ord} className="min-w-[150px] p-2 text-[11px] font-medium text-ink-3 tabular">{l.code}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {discipline.blocks.map((b) => (
-            <tr key={b.id} className="border-t border-line-2 align-top">
-              <td className="sticky left-0 z-10 bg-bg-elev p-2 text-[12px] font-medium text-ink">{b.name}</td>
-              {cols.map((l) => {
-                const c = cellOf(b, l.ord);
-                if (!c || !c.required || !c.text) {
-                  return <td key={l.ord} className="p-2 text-center text-[12px] text-ink-4">—</td>;
-                }
+    <div className="overflow-x-auto pb-1">
+      <div
+        className="grid min-w-[900px] gap-px overflow-hidden rounded-xl border border-line bg-line"
+        style={{ gridTemplateColumns: `180px repeat(${cols.length}, minmax(150px, 1fr))` }}
+      >
+        {/* header row */}
+        <div className="sticky left-0 z-20 bg-bg-tint px-3.5 py-3 text-[11px] font-semibold uppercase tracking-wide text-ink-3">
+          Блок · уровень
+        </div>
+        {cols.map((l) => (
+          <div key={l.ord} className="flex flex-col gap-px bg-brand px-3 py-2.5 text-[#1A1100]">
+            <span className="text-[13px] font-extrabold tabular">{l.code}</span>
+            <span className="text-[11px] font-semibold opacity-85">{l.name}</span>
+          </div>
+        ))}
+
+        {/* body rows */}
+        {discipline.blocks.map((b) => (
+          <div key={b.id} className="contents">
+            <div className="sticky left-0 z-10 flex items-center bg-bg-tint px-3.5 py-3.5 text-[12.5px] font-semibold text-ink">
+              {b.name}
+            </div>
+            {cols.map((l) => {
+              const c = cellOf(b, l.ord);
+              const has = c?.required && c.text;
+              if (!has) {
                 return (
-                  <td key={l.ord} className="p-1">
-                    <button type="button"
-                      onClick={() => setOpen({ block: b.name, code: l.code, text: c.text! })}
-                      className="line-clamp-3 w-full rounded-md border border-line-2 bg-bg-tint p-1.5 text-left text-[11px] text-ink-2 hover:bg-bg-sunken">
-                      {c.text}
-                    </button>
-                  </td>
+                  <div key={l.ord} className="bg-bg-tint p-3 text-[12px] italic leading-relaxed text-ink-4">
+                    {c && !c.required ? "Не требуется." : "—"}
+                  </div>
                 );
-              })}
-            </tr>
-          ))}
-        </tbody>
-      </table>
+              }
+              return (
+                <button
+                  key={l.ord}
+                  type="button"
+                  onClick={() => setOpen({ block: b.name, code: l.code, name: l.name, text: c!.text! })}
+                  className="bg-bg-elev p-3 text-left text-[12px] leading-relaxed text-ink-2 transition-colors hover:bg-brand-soft"
+                >
+                  {c!.text}
+                </button>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+
+      <p className="mt-2.5 text-[12px] italic text-ink-3">
+        Сотрудник уровня N владеет всеми компетенциями ≤N. Клик по ячейке — детали.
+      </p>
 
       {open && (
-        <Modal title={`${open.block} · ${open.code}`} onClose={() => setOpen(null)}>
-          <div className="mb-1 text-[11px] uppercase tracking-wide text-ink-3">Что должен демонстрировать сотрудник на этом уровне</div>
-          <p className="text-[13px] text-ink-2">{open.text}</p>
+        <Modal title={`${open.block} · ${open.code} ${open.name}`} onClose={() => setOpen(null)}>
+          <div className="mb-1 text-[11px] uppercase tracking-wide text-ink-3">
+            Что должен демонстрировать сотрудник на этом уровне
+          </div>
+          <p className="text-[13px] leading-relaxed text-ink-2">{open.text}</p>
         </Modal>
       )}
     </div>

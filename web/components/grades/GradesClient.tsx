@@ -1,5 +1,7 @@
 "use client";
 import { useState } from "react";
+import { Layers, SlidersHorizontal, Sparkles, CircleCheck, Settings, type LucideIcon } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { SegControl } from "@/components/SegControl";
 import { useGradesFramework } from "@/lib/query/grades";
 import { GradeLevels } from "./GradeLevels";
@@ -7,6 +9,15 @@ import { GradeMatrix } from "./GradeMatrix";
 import { GradeBands } from "./GradeBands";
 
 type Tab = "levels" | "matrix" | "bands";
+
+// Seed icon keys (backend=fields, frontend=layers, mobile=spark, qa=check, devops=settings).
+const DISC_ICONS: Record<string, LucideIcon> = {
+  fields: SlidersHorizontal,
+  layers: Layers,
+  spark: Sparkles,
+  check: CircleCheck,
+  settings: Settings,
+};
 
 export function GradesClient() {
   const fw = useGradesFramework();
@@ -33,15 +44,46 @@ export function GradesClient() {
 
   return (
     <div className="p-6">
-      <div className="mb-4">
+      <div className="mb-[18px]">
         <h1 className="text-[20px] font-semibold text-ink">Грейды</h1>
         <p className="text-[13px] text-ink-3 tabular">Карта компетенций по дисциплинам · 7 уровней (IC1–IC7) · ревью раз в 6 мес</p>
       </div>
 
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <SegControl
-          options={disciplines.map((d) => ({ value: d.key, label: d.label }))}
-          value={activeKey} onChange={setDisc} />
+      {/* discipline cards */}
+      <div className="mb-[18px] grid gap-2" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}>
+        {disciplines.map((d) => {
+          const Icon = DISC_ICONS[d.icon] ?? Layers;
+          const on = d.key === activeKey;
+          return (
+            <button
+              key={d.key}
+              type="button"
+              onClick={() => setDisc(d.key)}
+              className={cn(
+                "flex items-center gap-2.5 rounded-xl border p-3 text-left transition-colors",
+                on
+                  ? "border-brand bg-brand-soft ring-[3px] ring-brand/10"
+                  : "border-line bg-bg-elev hover:bg-bg-tint",
+              )}
+            >
+              <span
+                className={cn(
+                  "grid h-[34px] w-[34px] shrink-0 place-items-center rounded-[9px]",
+                  on ? "bg-brand text-[#1A1100]" : "bg-bg-tint text-ink-3",
+                )}
+              >
+                <Icon size={16} />
+              </span>
+              <span className="min-w-0">
+                <span className="block truncate text-[13.5px] font-semibold tracking-tight text-ink">{d.label}</span>
+                {d.description && <span className="block text-[11px] leading-snug text-ink-3">{d.description}</span>}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="mb-4 flex flex-wrap items-center justify-end gap-3">
         <SegControl
           options={[{ value: "levels", label: "Уровни" }, { value: "matrix", label: "Матрица" }, { value: "bands", label: "Вилки" }]}
           value={tab} onChange={(v) => setTab(v as Tab)} />
