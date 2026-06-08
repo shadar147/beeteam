@@ -180,6 +180,22 @@ export interface paths {
         patch: operations["update_goal"];
         trace?: never;
     };
+    "/v1/grades/framework": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_framework"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/health": {
         parameters: {
             query?: never;
@@ -469,6 +485,17 @@ export interface components {
             status: string;
             title: string;
         };
+        Discipline: {
+            blocks: components["schemas"]["GradeBlock"][];
+            description: string;
+            icon: string;
+            /** Format: uuid */
+            id: string;
+            key: string;
+            label: string;
+            /** Format: int32 */
+            ord: number;
+        };
         /** @description A meeting form field definition (from a template), for rendering the drawer. */
         FieldDef: {
             hint?: string | null;
@@ -522,6 +549,35 @@ export interface components {
             development: components["schemas"]["DevItem"][];
             okrs: components["schemas"]["Goal"][];
         };
+        GradeBlock: {
+            cells: components["schemas"]["MatrixCell"][];
+            /** Format: uuid */
+            id: string;
+            key: string;
+            name: string;
+            /** Format: int32 */
+            ord: number;
+        };
+        GradeLevel: {
+            autonomy: string;
+            /** Format: double */
+            band_high: number;
+            /** Format: double */
+            band_low: number;
+            /** Format: double */
+            band_mid: number;
+            code: string;
+            exp: string;
+            mgr: boolean;
+            name: string;
+            /** Format: int32 */
+            ord: number;
+            scope: string;
+        };
+        GradesFramework: {
+            disciplines: components["schemas"]["Discipline"][];
+            levels: components["schemas"]["GradeLevel"][];
+        };
         /** @description Liveness/readiness payload returned by `GET /v1/health`. */
         Health: {
             status: string;
@@ -536,6 +592,12 @@ export interface components {
         LoginResponse: {
             token: string;
             user: components["schemas"]["UserDto"];
+        };
+        MatrixCell: {
+            /** Format: int32 */
+            level: number;
+            required: boolean;
+            text?: string | null;
         };
         /** @description `/auth/me` response: the user plus the team they lead (if any). */
         MeResponse: {
@@ -1178,6 +1240,26 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    get_framework: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Grade framework */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GradesFramework"];
+                };
             };
         };
     };
