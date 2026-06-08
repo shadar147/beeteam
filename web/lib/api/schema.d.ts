@@ -324,6 +324,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/members/{id}/grade": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_member_grade"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/members/{id}/meetings": {
         parameters: {
             query?: never;
@@ -408,6 +424,11 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        BlockLevel: {
+            block_key: string;
+            /** Format: int32 */
+            level_ord: number;
+        };
         /** @description One meeting row for the CalendarScreen (team-level view). */
         CalendarMeeting: {
             /** Format: date-time */
@@ -664,6 +685,21 @@ export interface components {
             status: string;
             tags: string[];
             tz: string;
+        };
+        MemberGrade: {
+            block_levels: components["schemas"]["BlockLevel"][];
+            /** Format: double */
+            compa: number;
+            discipline_key: string;
+            /** Format: int32 */
+            grade_ord: number;
+            last_review?: string | null;
+            mgr_track: boolean;
+            next_review?: string | null;
+            /** Format: int32 */
+            ready_months: number;
+            /** Format: int32 */
+            target_ord?: number | null;
         };
         /** @description A team member as shown in the TeamList table. */
         MemberRow: {
@@ -1598,6 +1634,36 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GoalsResponse"];
+                };
+            };
+            /** @description Member not on the caller's team */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_member_grade: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Member id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Member grade, or null if unassigned */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemberGrade"];
                 };
             };
             /** @description Member not on the caller's team */

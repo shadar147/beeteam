@@ -617,6 +617,51 @@ pub async fn seed_demo(pool: &PgPool) -> Result<(), sqlx::Error> {
         }
     }
 
+    // ── Member grades (slice #2): 6 engineers graded; designer + PM left ungraded ──
+    // (member_name, discipline_key, grade, target?, compa, ready_months, mgr,
+    //  next_review_offset_days, last_review_offset_days?, [stack,core,arch,infra,ai,impact])
+    type MG = (&'static str, &'static str, i32, Option<i32>, f64, i32, bool, i64, Option<i64>, [i32; 6]);
+    let member_grades: [MG; 6] = [
+        ("Анна Лебедева",     "frontend", 5, Some(6), 0.62, 4, false,  30, Some(-45), [6, 5, 5, 4, 6, 5]),
+        ("Игорь Петров",      "backend",  4, Some(5), 0.48, 2, false,  12, Some(-20), [4, 5, 4, 4, 3, 3]),
+        ("Мария Соколова",    "qa",       5, None,    0.55, 0, true,   22, Some(-14), [5, 6, 5, 4, 4, 6]),
+        ("Тимур Хасанов",     "frontend", 2, Some(3), 0.35, 2, false,  21, None,      [3, 3, 2, 2, 3, 2]),
+        ("Светлана Морозова", "devops",   4, None,    0.52, 0, false,   5, Some(-30), [5, 4, 4, 6, 4, 4]),
+        ("Алексей Романов",   "backend",  3, Some(4), 0.58, 3, false,  27, Some(-60), [4, 3, 3, 3, 4, 3]),
+    ];
+    const BLOCK_KEYS: [&str; 6] = ["stack", "core", "arch", "infra", "ai", "impact"];
+    for mg in member_grades.iter() {
+        let member: (uuid::Uuid,) =
+            sqlx::query_as("SELECT id FROM team_members WHERE name = $1 AND team_id = $2")
+                .bind(mg.0).bind(team_id)
+                .fetch_one(&mut *tx).await?;
+        let disc: (uuid::Uuid,) =
+            sqlx::query_as("SELECT id FROM disciplines WHERE key = $1 AND workspace_id = $2")
+                .bind(mg.1).bind(ws_id)
+                .fetch_one(&mut *tx).await?;
+        let next_review = (now + day * mg.7 as i32).date_naive();
+        let last_review = mg.8.map(|d| (now + day * d as i32).date_naive());
+        let grow: (uuid::Uuid,) = sqlx::query_as(
+            "INSERT INTO member_grades \
+             (member_id, discipline_id, grade_ord, target_ord, compa, ready_months, mgr_track, next_review, last_review) \
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id",
+        )
+        .bind(member.0).bind(disc.0).bind(mg.2).bind(mg.3).bind(mg.4)
+        .bind(mg.5).bind(mg.6).bind(next_review).bind(last_review)
+        .fetch_one(&mut *tx).await?;
+        for (i, bkey) in BLOCK_KEYS.iter().enumerate() {
+            let block: (uuid::Uuid,) =
+                sqlx::query_as("SELECT id FROM grade_blocks WHERE key = $1 AND discipline_id = $2")
+                    .bind(*bkey).bind(disc.0)
+                    .fetch_one(&mut *tx).await?;
+            sqlx::query(
+                "INSERT INTO member_block_levels (member_grade_id, block_id, level_ord) VALUES ($1,$2,$3)",
+            )
+            .bind(grow.0).bind(block.0).bind(mg.9[i])
+            .execute(&mut *tx).await?;
+        }
+    }
+
     tx.commit().await?;
     Ok(())
 }
@@ -722,6 +767,35 @@ mod tests {
              WHERE d.key='backend' AND b.key='arch' AND mc.level_ord=1 AND mc.required=false",
         ).fetch_one(&pool).await.unwrap();
         assert_eq!(not_req.0, 1, "backend/arch/IC1 not required");
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn seed_loads_member_grades(pool: PgPool) {
+        seed_demo(&pool).await.unwrap();
+
+        let grades: (i64,) = sqlx::query_as("SELECT count(*) FROM member_grades")
+            .fetch_one(&pool).await.unwrap();
+        assert_eq!(grades.0, 6, "6 engineers graded");
+
+        let levels: (i64,) = sqlx::query_as("SELECT count(*) FROM member_block_levels")
+            .fetch_one(&pool).await.unwrap();
+        assert_eq!(levels.0, 36, "6 members × 6 blocks");
+
+        let mismatched: (i64,) = sqlx::query_as(
+            "SELECT count(*) FROM member_grades mg \
+             WHERE (SELECT count(*) FROM member_block_levels mbl WHERE mbl.member_grade_id = mg.id) \
+                <> (SELECT count(*) FROM grade_blocks gb WHERE gb.discipline_id = mg.discipline_id)",
+        )
+        .fetch_one(&pool).await.unwrap();
+        assert_eq!(mismatched.0, 0, "block-level count matches discipline blocks");
+
+        let designer: (i64,) = sqlx::query_as(
+            "SELECT count(*) FROM member_grades mg \
+             JOIN team_members tm ON tm.id = mg.member_id \
+             WHERE tm.name = 'Дмитрий Кузнецов'",
+        )
+        .fetch_one(&pool).await.unwrap();
+        assert_eq!(designer.0, 0, "designer has no grade");
     }
 
     #[sqlx::test(migrations = "./migrations")]

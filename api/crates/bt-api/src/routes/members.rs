@@ -1,6 +1,6 @@
 use axum::extract::{Path, State};
 use axum::Json;
-use bt_domain::{Competency, DevItem, FileMeta, Goal, GoalsResponse, MeetingListItem, MemberDetail};
+use bt_domain::{Competency, DevItem, FileMeta, Goal, GoalsResponse, MeetingListItem, MemberDetail, MemberGrade, BlockLevel};
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -212,6 +212,65 @@ pub async fn list_member_files(
         })
         .collect();
     Ok(Json(out))
+}
+
+#[utoipa::path(
+    get,
+    path = "/v1/members/{id}/grade",
+    params(("id" = uuid::Uuid, Path, description = "Member id")),
+    responses(
+        (status = 200, description = "Member grade, or null if unassigned", body = MemberGrade),
+        (status = 403, description = "Member not on the caller's team"),
+    )
+)]
+pub async fn get_member_grade(
+    State(state): State<AppState>,
+    axum::Extension(auth): axum::Extension<AuthUser>,
+    Path(member_id): Path<Uuid>,
+) -> AppResult<Json<Option<MemberGrade>>> {
+    require_member_access(&auth, member_id, &state.pool).await?;
+
+    let row: Option<(
+        String, i32, Option<i32>, f64, i32, bool,
+        Option<chrono::NaiveDate>, Option<chrono::NaiveDate>, Uuid,
+    )> = sqlx::query_as(
+        "SELECT d.key, mg.grade_ord, mg.target_ord, mg.compa, mg.ready_months, mg.mgr_track, \
+                mg.next_review, mg.last_review, mg.id \
+         FROM member_grades mg \
+         JOIN disciplines d ON d.id = mg.discipline_id \
+         WHERE mg.member_id = $1",
+    )
+    .bind(member_id)
+    .fetch_optional(&state.pool)
+    .await?;
+
+    let Some(r) = row else { return Ok(Json(None)) };
+
+    let block_levels: Vec<BlockLevel> = sqlx::query_as::<_, (String, i32)>(
+        "SELECT gb.key, mbl.level_ord \
+         FROM member_block_levels mbl \
+         JOIN grade_blocks gb ON gb.id = mbl.block_id \
+         WHERE mbl.member_grade_id = $1 \
+         ORDER BY gb.ord",
+    )
+    .bind(r.8)
+    .fetch_all(&state.pool)
+    .await?
+    .into_iter()
+    .map(|(block_key, level_ord)| BlockLevel { block_key, level_ord })
+    .collect();
+
+    Ok(Json(Some(MemberGrade {
+        discipline_key: r.0,
+        grade_ord: r.1,
+        target_ord: r.2,
+        compa: r.3,
+        ready_months: r.4,
+        mgr_track: r.5,
+        next_review: r.6.map(|d| d.to_string()),
+        last_review: r.7.map(|d| d.to_string()),
+        block_levels,
+    })))
 }
 
 fn first_nonempty<'a>(opts: &[Option<&'a str>]) -> Option<&'a str> {
@@ -473,5 +532,66 @@ mod tests {
         let (s2, _) = get(pool, &token_b, &format!("/v1/members/{anna}/files")).await;
         assert_eq!(s1, StatusCode::FORBIDDEN);
         assert_eq!(s2, StatusCode::FORBIDDEN);
+    }
+
+    #[sqlx::test(migrations = "../bt-db/migrations")]
+    async fn member_grade_returns_assigned(pool: sqlx::PgPool) {
+        bt_db::seed::seed_demo(&pool).await.unwrap();
+        let token = login_token(&pool, "e.glebov@beeteam.io").await;
+        let id: (uuid::Uuid,) = sqlx::query_as("SELECT id FROM team_members WHERE name = 'Игорь Петров'")
+            .fetch_one(&pool).await.unwrap();
+        let resp = app(pool).oneshot(
+            Request::builder().method("GET").uri(format!("/v1/members/{}/grade", id.0))
+                .header("authorization", format!("Bearer {token}"))
+                .body(Body::empty()).unwrap(),
+        ).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(json["discipline_key"], "backend");
+        assert_eq!(json["grade_ord"], 4);
+        assert_eq!(json["target_ord"], 5);
+        assert_eq!(json["block_levels"].as_array().unwrap().len(), 6);
+    }
+
+    #[sqlx::test(migrations = "../bt-db/migrations")]
+    async fn member_grade_null_when_unassigned(pool: sqlx::PgPool) {
+        bt_db::seed::seed_demo(&pool).await.unwrap();
+        let token = login_token(&pool, "e.glebov@beeteam.io").await;
+        let id: (uuid::Uuid,) = sqlx::query_as("SELECT id FROM team_members WHERE name = 'Дмитрий Кузнецов'")
+            .fetch_one(&pool).await.unwrap();
+        let resp = app(pool).oneshot(
+            Request::builder().method("GET").uri(format!("/v1/members/{}/grade", id.0))
+                .header("authorization", format!("Bearer {token}"))
+                .body(Body::empty()).unwrap(),
+        ).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+        assert!(serde_json::from_slice::<serde_json::Value>(&bytes).unwrap().is_null());
+    }
+
+    #[sqlx::test(migrations = "../bt-db/migrations")]
+    async fn member_grade_forbidden_for_foreign_member(pool: sqlx::PgPool) {
+        bt_db::seed::seed_demo(&pool).await.unwrap();
+        let token = login_token(&pool, "e.glebov@beeteam.io").await;
+        let resp = app(pool).oneshot(
+            Request::builder().method("GET")
+                .uri(format!("/v1/members/{}/grade", uuid::Uuid::new_v4()))
+                .header("authorization", format!("Bearer {token}"))
+                .body(Body::empty()).unwrap(),
+        ).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[sqlx::test(migrations = "../bt-db/migrations")]
+    async fn member_grade_requires_auth(pool: sqlx::PgPool) {
+        bt_db::seed::seed_demo(&pool).await.unwrap();
+        let id: (uuid::Uuid,) = sqlx::query_as("SELECT id FROM team_members WHERE name = 'Игорь Петров'")
+            .fetch_one(&pool).await.unwrap();
+        let resp = app(pool).oneshot(
+            Request::builder().method("GET").uri(format!("/v1/members/{}/grade", id.0))
+                .body(Body::empty()).unwrap(),
+        ).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
     }
 }

@@ -21,14 +21,18 @@ export function GradeChip({
 }: {
   ord: number;
   code: string;
-  size?: "sm" | "md";
+  size?: "sm" | "md" | "xl";
   className?: string;
 }) {
   return (
     <span
       className={cn(
         "inline-flex items-center justify-center rounded-md border font-semibold tabular tracking-wide",
-        size === "sm" ? "h-5 min-w-[30px] px-1.5 text-[10.5px]" : "h-[26px] min-w-[38px] px-2 text-[12.5px]",
+        size === "xl"
+          ? "h-14 min-w-[64px] rounded-2xl px-3 text-[22px]"
+          : size === "sm"
+            ? "h-5 min-w-[30px] px-1.5 text-[10.5px]"
+            : "h-[26px] min-w-[38px] px-2 text-[12.5px]",
         LVL[ord] ?? LVL[1],
         className,
       )}

@@ -12,6 +12,7 @@ use utoipa::OpenApi;
         crate::routes::members::list_member_meetings,
         crate::routes::members::get_member_goals,
         crate::routes::members::list_member_files,
+        crate::routes::members::get_member_grade,
         crate::routes::meetings::get_meeting,
         crate::routes::meetings::create_meeting,
         crate::routes::meetings::update_meeting,
@@ -69,6 +70,8 @@ use utoipa::OpenApi;
         bt_domain::GradeBlock,
         bt_domain::Discipline,
         bt_domain::GradesFramework,
+        bt_domain::MemberGrade,
+        bt_domain::BlockLevel,
     )),
     info(title = "BeeTeam API", version = "0.1.0")
 )]
