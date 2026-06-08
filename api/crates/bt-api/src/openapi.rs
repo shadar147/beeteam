@@ -32,6 +32,7 @@ use utoipa::OpenApi;
         crate::routes::files::delete_file,
         crate::routes::files::download_files_zip,
         crate::routes::teams::team_calendar,
+        crate::routes::grades::get_framework,
     ),
     components(schemas(
         bt_domain::Health,
@@ -63,6 +64,11 @@ use utoipa::OpenApi;
         bt_domain::FieldDef,
         bt_domain::TemplateDetail,
         bt_domain::CalendarMeeting,
+        bt_domain::GradeLevel,
+        bt_domain::MatrixCell,
+        bt_domain::GradeBlock,
+        bt_domain::Discipline,
+        bt_domain::GradesFramework,
     )),
     info(title = "BeeTeam API", version = "0.1.0")
 )]

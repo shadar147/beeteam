@@ -1,6 +1,7 @@
 pub mod auth;
 pub mod files;
 pub mod goals;
+pub mod grades;
 pub mod health;
 pub mod meetings;
 pub mod members;

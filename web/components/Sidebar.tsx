@@ -9,7 +9,7 @@ import type { SessionUser } from "@/lib/auth";
 const TEAM_NAV = [
   { id: "team", label: "Моя команда", icon: "team", count: 8, href: "/", disabled: false },
   { id: "calendar", label: "Календарь", icon: "calendar", href: "/calendar", disabled: false },
-  { id: "grades", label: "Грейды", icon: "layers", disabled: true },
+  { id: "grades", label: "Грейды", icon: "layers", href: "/grades", disabled: false },
   { id: "fields", label: "Конструктор полей", icon: "fields", disabled: true },
   { id: "export", label: "Экспорт", icon: "download", disabled: true },
 ] as const;
