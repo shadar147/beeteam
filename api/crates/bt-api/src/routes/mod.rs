@@ -1,4 +1,5 @@
 pub mod auth;
+pub mod evidence;
 pub mod files;
 pub mod goals;
 pub mod grades;
