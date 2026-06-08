@@ -51,7 +51,7 @@ export function BlockProfile({
                 <span
                   data-testid="grade-marker"
                   className="absolute -top-0.5 h-3 w-0.5 rounded bg-ink"
-                  style={{ left: `calc(${((gradeOrd - 0.5) / levelCount) * 100}% )` }}
+                  style={{ left: `calc(${((gradeOrd - 0.5) / levelCount) * 100}%)` }}
                 />
               </div>
             </div>
