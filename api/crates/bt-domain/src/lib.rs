@@ -314,6 +314,53 @@ pub struct TemplateDetail {
     pub fields: Vec<FieldDef>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct GradeLevel {
+    pub ord: i32,
+    pub code: String,
+    pub name: String,
+    pub exp: String,
+    pub autonomy: String,
+    pub scope: String,
+    pub mgr: bool,
+    pub band_low: f64,
+    pub band_mid: f64,
+    pub band_high: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct MatrixCell {
+    pub level: i32,
+    pub text: Option<String>,
+    pub required: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct GradeBlock {
+    pub id: uuid::Uuid,
+    pub key: String,
+    pub name: String,
+    pub ord: i32,
+    pub cells: Vec<MatrixCell>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct Discipline {
+    pub id: uuid::Uuid,
+    pub key: String,
+    pub label: String,
+    pub icon: String,
+    pub description: String,
+    pub ord: i32,
+    pub blocks: Vec<GradeBlock>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct GradesFramework {
+    pub levels: Vec<GradeLevel>,
+    pub disciplines: Vec<Discipline>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
