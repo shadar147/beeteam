@@ -2,10 +2,12 @@ import Link from "next/link";
 import { HistoryTab } from "./HistoryTab";
 import { GoalsTab } from "./GoalsTab";
 import { FilesTab } from "./FilesTab";
+import { GradeTab } from "./GradeTab";
 
 const TABS = [
   { key: "history", label: "История 1-2-1" },
   { key: "goals", label: "Цели и развитие" },
+  { key: "grade", label: "Грейд" },
   { key: "files", label: "Файлы" },
 ];
 
@@ -34,6 +36,8 @@ export default function ProfilePage({
       </nav>
       {tab === "goals" ? (
         <GoalsTab memberId={params.id} />
+      ) : tab === "grade" ? (
+        <GradeTab memberId={params.id} />
       ) : tab === "files" ? (
         <FilesTab memberId={params.id} />
       ) : (
