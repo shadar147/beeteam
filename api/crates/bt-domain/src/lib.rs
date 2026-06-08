@@ -361,6 +361,25 @@ pub struct GradesFramework {
     pub disciplines: Vec<Discipline>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct BlockLevel {
+    pub block_key: String,
+    pub level_ord: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct MemberGrade {
+    pub discipline_key: String,
+    pub grade_ord: i32,
+    pub target_ord: Option<i32>,
+    pub compa: f64,
+    pub ready_months: i32,
+    pub mgr_track: bool,
+    pub next_review: Option<String>,
+    pub last_review: Option<String>,
+    pub block_levels: Vec<BlockLevel>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
