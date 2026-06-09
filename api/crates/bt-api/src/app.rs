@@ -47,6 +47,8 @@ pub fn build_router(state: AppState) -> Router {
         .route("/v1/evidence/:id", axum::routing::delete(routes::evidence::delete_evidence))
         .route("/v1/members/:id/reviews", get(routes::reviews::list_member_reviews)
             .post(routes::reviews::start_review))
+        .route("/v1/reviews/:id", axum::routing::patch(routes::reviews::update_review)
+            .delete(routes::reviews::delete_review))
         .route("/v1/meetings", axum::routing::post(routes::meetings::create_meeting))
         .route("/v1/meetings/:id", get(routes::meetings::get_meeting)
             .patch(routes::meetings::update_meeting)

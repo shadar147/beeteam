@@ -1,7 +1,7 @@
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::Json;
-use bt_domain::{Review, ReviewScore}; // Tasks 4–5 extend this with UpdateReview, CalibrationPeer
+use bt_domain::{Review, ReviewScore, UpdateReview};
 use chrono::Datelike;
 use uuid::Uuid;
 
@@ -47,7 +47,6 @@ async fn rv_scores(pool: &sqlx::PgPool, review_id: Uuid) -> AppResult<Vec<Review
 }
 
 /// (member_id, status) of a review, or 404.
-#[allow(dead_code)] // used from Task 4
 async fn rv_member_status(pool: &sqlx::PgPool, id: Uuid) -> AppResult<(Uuid, String)> {
     let r: Option<(Uuid, String)> = sqlx::query_as(
         "SELECT member_id, status::text FROM performance_reviews WHERE id = $1",
@@ -143,6 +142,79 @@ pub async fn list_member_reviews(
         out.push(rv_from(r, scores));
     }
     Ok(Json(out))
+}
+
+#[utoipa::path(
+    patch, path = "/v1/reviews/{id}", request_body = UpdateReview,
+    params(("id" = uuid::Uuid, Path, description = "Review id")),
+    responses(
+        (status = 200, body = Review), (status = 400), (status = 403),
+        (status = 404), (status = 409, description = "Review is not a draft"),
+    )
+)]
+pub async fn update_review(
+    State(state): State<AppState>,
+    axum::Extension(auth): axum::Extension<AuthUser>,
+    Path(id): Path<Uuid>,
+    Json(body): Json<UpdateReview>,
+) -> AppResult<Json<Review>> {
+    let (member_id, status) = rv_member_status(&state.pool, id).await?;
+    require_member_access(&auth, member_id, &state.pool).await?;
+    if status != "draft" {
+        return Err(AppError::Conflict("review is not a draft".into()));
+    }
+    if let Some(d) = &body.decision {
+        if !matches!(d.as_str(), "hold" | "promote" | "pip") {
+            return Err(AppError::BadRequest("decision must be hold|promote|pip".into()));
+        }
+    }
+    if let Some(scores) = &body.scores {
+        if scores.iter().any(|s| !(1..=7).contains(&s.lead_ord)) {
+            return Err(AppError::BadRequest("lead_ord must be 1..7".into()));
+        }
+    }
+
+    let mut tx = state.pool.begin().await?;
+    if let Some(scores) = &body.scores {
+        for s in scores {
+            sqlx::query("UPDATE review_scores SET lead_ord = $3 WHERE review_id = $1 AND block_id = $2")
+                .bind(id).bind(s.block_id).bind(s.lead_ord)
+                .execute(&mut *tx).await?;
+        }
+    }
+    if let Some(d) = &body.decision {
+        sqlx::query("UPDATE performance_reviews SET decision = $2::review_decision WHERE id = $1")
+            .bind(id).bind(d).execute(&mut *tx).await?;
+    }
+    if let Some(s) = &body.summary {
+        sqlx::query("UPDATE performance_reviews SET summary = $2 WHERE id = $1")
+            .bind(id).bind(s).execute(&mut *tx).await?;
+    }
+    tx.commit().await?;
+
+    let r: RvRow = sqlx::query_as(&format!("{RV_SELECT} WHERE id = $1"))
+        .bind(id).fetch_one(&state.pool).await?;
+    let scores = rv_scores(&state.pool, id).await?;
+    Ok(Json(rv_from(r, scores)))
+}
+
+#[utoipa::path(
+    delete, path = "/v1/reviews/{id}",
+    params(("id" = uuid::Uuid, Path, description = "Review id")),
+    responses((status = 204), (status = 403), (status = 404), (status = 409))
+)]
+pub async fn delete_review(
+    State(state): State<AppState>,
+    axum::Extension(auth): axum::Extension<AuthUser>,
+    Path(id): Path<Uuid>,
+) -> AppResult<StatusCode> {
+    let (member_id, status) = rv_member_status(&state.pool, id).await?;
+    require_member_access(&auth, member_id, &state.pool).await?;
+    if status != "draft" {
+        return Err(AppError::Conflict("only drafts can be deleted".into()));
+    }
+    sqlx::query("DELETE FROM performance_reviews WHERE id = $1").bind(id).execute(&state.pool).await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 #[cfg(test)]
@@ -264,5 +336,95 @@ mod tests {
                 .body(Body::empty()).unwrap(),
         ).await.unwrap();
         assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    }
+
+    async fn patch_review(
+        pool: &sqlx::PgPool, token: &str, id: &str, body: &str,
+    ) -> (StatusCode, serde_json::Value) {
+        let resp = app(pool.clone()).oneshot(
+            Request::builder().method("PATCH").uri(format!("/v1/reviews/{id}"))
+                .header("authorization", format!("Bearer {token}"))
+                .header("content-type", "application/json")
+                .body(Body::from(body.to_string())).unwrap(),
+        ).await.unwrap();
+        let status = resp.status();
+        let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+        let json = if bytes.is_empty() { serde_json::Value::Null } else { serde_json::from_slice(&bytes).unwrap() };
+        (status, json)
+    }
+
+    #[sqlx::test(migrations = "../bt-db/migrations")]
+    async fn patch_updates_scores_decision_summary(pool: sqlx::PgPool) {
+        bt_db::seed::seed_demo(&pool).await.unwrap();
+        let token = login_token(&pool, "e.glebov@beeteam.io").await;
+        let anna = member_id(&pool, "Анна Лебедева").await;
+        let (_, draft) = post_review(&pool, &token, anna).await;
+        let id = draft["id"].as_str().unwrap();
+        let core = draft["scores"].as_array().unwrap().iter()
+            .find(|s| s["block_key"] == "core").unwrap()["block_id"].as_str().unwrap().to_string();
+
+        let body = format!(
+            r#"{{"scores":[{{"block_id":"{core}","lead_ord":6}}],"decision":"promote","summary":"готова"}}"#
+        );
+        let (status, json) = patch_review(&pool, &token, id, &body).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(json["decision"], "promote");
+        assert_eq!(json["summary"], "готова");
+        let core_row = json["scores"].as_array().unwrap().iter()
+            .find(|s| s["block_key"] == "core").unwrap();
+        assert_eq!(core_row["lead_ord"], 6);
+    }
+
+    #[sqlx::test(migrations = "../bt-db/migrations")]
+    async fn patch_rejects_bad_decision_and_level(pool: sqlx::PgPool) {
+        bt_db::seed::seed_demo(&pool).await.unwrap();
+        let token = login_token(&pool, "e.glebov@beeteam.io").await;
+        let anna = member_id(&pool, "Анна Лебедева").await;
+        let (_, draft) = post_review(&pool, &token, anna).await;
+        let id = draft["id"].as_str().unwrap();
+        let block = draft["scores"][0]["block_id"].as_str().unwrap().to_string();
+
+        let (s1, _) = patch_review(&pool, &token, id, r#"{"decision":"bogus"}"#).await;
+        assert_eq!(s1, StatusCode::BAD_REQUEST);
+        let (s2, _) = patch_review(&pool, &token, id,
+            &format!(r#"{{"scores":[{{"block_id":"{block}","lead_ord":9}}]}}"#)).await;
+        assert_eq!(s2, StatusCode::BAD_REQUEST);
+    }
+
+    #[sqlx::test(migrations = "../bt-db/migrations")]
+    async fn patch_409_on_pending_review(pool: sqlx::PgPool) {
+        bt_db::seed::seed_demo(&pool).await.unwrap();
+        let token = login_token(&pool, "e.glebov@beeteam.io").await;
+        let anna = member_id(&pool, "Анна Лебедева").await;
+        let (_, draft) = post_review(&pool, &token, anna).await;
+        let id = draft["id"].as_str().unwrap();
+        sqlx::query("UPDATE performance_reviews SET status = 'pending' WHERE id = $1::uuid")
+            .bind(id).execute(&pool).await.unwrap();
+
+        let (status, _) = patch_review(&pool, &token, id, r#"{"summary":"late"}"#).await;
+        assert_eq!(status, StatusCode::CONFLICT);
+    }
+
+    #[sqlx::test(migrations = "../bt-db/migrations")]
+    async fn delete_draft_then_404(pool: sqlx::PgPool) {
+        bt_db::seed::seed_demo(&pool).await.unwrap();
+        let token = login_token(&pool, "e.glebov@beeteam.io").await;
+        let anna = member_id(&pool, "Анна Лебедева").await;
+        let (_, draft) = post_review(&pool, &token, anna).await;
+        let id = draft["id"].as_str().unwrap();
+
+        let resp = app(pool.clone()).oneshot(
+            Request::builder().method("DELETE").uri(format!("/v1/reviews/{id}"))
+                .header("authorization", format!("Bearer {token}"))
+                .body(Body::empty()).unwrap(),
+        ).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+
+        let resp = app(pool).oneshot(
+            Request::builder().method("DELETE").uri(format!("/v1/reviews/{id}"))
+                .header("authorization", format!("Bearer {token}"))
+                .body(Body::empty()).unwrap(),
+        ).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
     }
 }
