@@ -34,6 +34,9 @@ use utoipa::OpenApi;
         crate::routes::files::download_files_zip,
         crate::routes::teams::team_calendar,
         crate::routes::grades::get_framework,
+        crate::routes::evidence::create_evidence,
+        crate::routes::evidence::delete_evidence,
+        crate::routes::evidence::list_member_evidence,
     ),
     components(schemas(
         bt_domain::Health,
@@ -72,6 +75,8 @@ use utoipa::OpenApi;
         bt_domain::GradesFramework,
         bt_domain::MemberGrade,
         bt_domain::BlockLevel,
+        bt_domain::Evidence,
+        bt_domain::CreateEvidence,
     )),
     info(title = "BeeTeam API", version = "0.1.0")
 )]

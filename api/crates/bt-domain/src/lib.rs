@@ -380,6 +380,29 @@ pub struct MemberGrade {
     pub block_levels: Vec<BlockLevel>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct Evidence {
+    pub id: uuid::Uuid,
+    pub meeting_id: Option<uuid::Uuid>,
+    pub block_key: String,
+    pub block_name: String,
+    pub level_ord: i32,
+    pub status: String,
+    pub note: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Deserialize, ToSchema, Validate)]
+pub struct CreateEvidence {
+    pub member_id: uuid::Uuid,
+    pub meeting_id: Option<uuid::Uuid>,
+    pub block_id: uuid::Uuid,
+    #[validate(range(min = 1, max = 7, message = "level_ord must be 1..7"))]
+    pub level_ord: i32,
+    pub status: String,
+    pub note: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

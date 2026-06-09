@@ -662,6 +662,38 @@ pub async fn seed_demo(pool: &PgPool) -> Result<(), sqlx::Error> {
         }
     }
 
+    // ── Grade evidence for Анна (slice #3), tied to her recent done meetings ──
+    {
+        let aid = anna_id.expect("seed: Anna must exist");
+        let fe: (uuid::Uuid,) = sqlx::query_as(
+            "SELECT id FROM disciplines WHERE key = 'frontend' AND workspace_id = $1",
+        ).bind(ws_id).fetch_one(&mut *tx).await?;
+        let done: Vec<(uuid::Uuid,)> = sqlx::query_as(
+            "SELECT id FROM meetings WHERE member_id = $1 AND state = 'done' ORDER BY date DESC",
+        ).bind(aid).fetch_all(&mut *tx).await?;
+        let m0 = done.get(0).map(|r| r.0);
+        let m1 = done.get(1).map(|r| r.0);
+        let ev: [(&str, i32, &str, Option<uuid::Uuid>, &str); 6] = [
+            ("arch",   6, "demonstrated", m0, "Спроектировала миграцию админ-кабинета — декомпозиция на модули, ADR по shared-state."),
+            ("impact", 5, "demonstrated", m0, "Менторский ритм с Тимуром — 4/4 ревью за месяц."),
+            ("arch",   6, "partial",      m1, "Начала проектировать модульную систему фичефлагов, не хватило alignment с платформой."),
+            ("impact", 5, "demonstrated", m1, "Сильно вытянула собеседование — кандидат принял оффер."),
+            ("stack",  6, "demonstrated", m0, "Задала критерии успеха редизайна, выступила как tech-owner на план-сессии."),
+            ("ai",     6, "demonstrated", m1, "Настроила shared prompts и MCP-сервер для команды фронтенда."),
+        ];
+        for (bkey, level, status, meeting, note) in ev.iter() {
+            let block: (uuid::Uuid,) = sqlx::query_as(
+                "SELECT id FROM grade_blocks WHERE key = $1 AND discipline_id = $2",
+            ).bind(*bkey).bind(fe.0).fetch_one(&mut *tx).await?;
+            sqlx::query(
+                "INSERT INTO grade_evidence (member_id, meeting_id, block_id, level_ord, status, note, created_by) \
+                 VALUES ($1,$2,$3,$4,$5::evidence_status,$6,$7)",
+            )
+            .bind(aid).bind(*meeting).bind(block.0).bind(*level).bind(*status).bind(*note).bind(lead_id)
+            .execute(&mut *tx).await?;
+        }
+    }
+
     tx.commit().await?;
     Ok(())
 }
@@ -806,5 +838,16 @@ mod tests {
                 .fetch_one(&pool).await.unwrap();
         assert!(hash.0.starts_with("$argon2id$"), "got: {}", hash.0);
         assert_ne!(hash.0, "!seed-no-login");
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn seed_loads_grade_evidence(pool: PgPool) {
+        seed_demo(&pool).await.unwrap();
+        let n: (i64,) = sqlx::query_as(
+            "SELECT count(*) FROM grade_evidence ge \
+             JOIN team_members tm ON tm.id = ge.member_id \
+             WHERE tm.name = 'Анна Лебедева'",
+        ).fetch_one(&pool).await.unwrap();
+        assert!(n.0 >= 4, "Анна has seeded evidence");
     }
 }

@@ -9,6 +9,7 @@ import {
 } from "@/lib/meeting-form";
 import { downloadFile, useDeleteFile } from "@/lib/query/files";
 import { FileDropzone } from "@/components/FileDropzone";
+import { CompetencyCapture } from "@/components/meeting/CompetencyCapture";
 import { FieldControl } from "./FieldControl";
 import { Pill } from "./Pill";
 
@@ -135,6 +136,12 @@ export function MeetingDrawer({ meetingId, onClose }: { meetingId: string; onClo
                   />
                 )}
               </div>
+              {meeting.data && (
+                <div className="mt-4 border-t border-line pt-3">
+                  <div className="mb-2 text-[12px] font-medium uppercase tracking-wide text-ink-3">Проявленные компетенции</div>
+                  <CompetencyCapture memberId={meeting.data.member_id} meetingId={meetingId} />
+                </div>
+              )}
             </>
           )}
         </div>
