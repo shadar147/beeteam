@@ -6,5 +6,6 @@ pub mod grades;
 pub mod health;
 pub mod meetings;
 pub mod members;
+pub mod reviews;
 pub mod teams;
 pub mod templates;

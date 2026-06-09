@@ -37,6 +37,8 @@ use utoipa::OpenApi;
         crate::routes::evidence::create_evidence,
         crate::routes::evidence::delete_evidence,
         crate::routes::evidence::list_member_evidence,
+        crate::routes::reviews::start_review,
+        crate::routes::reviews::list_member_reviews,
     ),
     components(schemas(
         bt_domain::Health,
@@ -77,6 +79,11 @@ use utoipa::OpenApi;
         bt_domain::BlockLevel,
         bt_domain::Evidence,
         bt_domain::CreateEvidence,
+        bt_domain::Review,
+        bt_domain::ReviewScore,
+        bt_domain::UpdateReviewScore,
+        bt_domain::UpdateReview,
+        bt_domain::CalibrationPeer,
     )),
     info(title = "BeeTeam API", version = "0.1.0")
 )]
