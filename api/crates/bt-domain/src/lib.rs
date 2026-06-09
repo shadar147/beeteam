@@ -403,6 +403,53 @@ pub struct CreateEvidence {
     pub note: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct ReviewScore {
+    pub block_id: uuid::Uuid,
+    pub block_key: String,
+    pub block_name: String,
+    pub self_ord: Option<i32>,
+    pub lead_ord: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct Review {
+    pub id: uuid::Uuid,
+    pub period: String,
+    pub status: String, // "draft" | "pending" | "final"
+    pub from_grade_ord: i32,
+    pub target_ord: Option<i32>,
+    pub decision: Option<String>, // "hold" | "promote" | "pip"
+    pub to_grade_ord: Option<i32>,
+    pub summary: String,
+    pub created_at: String,
+    pub finalized_at: Option<String>,
+    pub scores: Vec<ReviewScore>,
+}
+
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct UpdateReviewScore {
+    pub block_id: uuid::Uuid,
+    pub lead_ord: i32,
+}
+
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct UpdateReview {
+    pub scores: Option<Vec<UpdateReviewScore>>,
+    pub decision: Option<String>,
+    pub summary: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct CalibrationPeer {
+    pub member_id: uuid::Uuid,
+    pub name: String,
+    pub hue: i32,
+    pub avg_level: f64,
+    pub target_ord: Option<i32>,
+    pub compa: f64,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
