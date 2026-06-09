@@ -100,6 +100,38 @@ export interface paths {
         patch: operations["update_dev_item"];
         trace?: never;
     };
+    "/v1/evidence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["create_evidence"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/evidence/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["delete_evidence"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/files": {
         parameters: {
             query?: never;
@@ -268,6 +300,22 @@ export interface paths {
             cookie?: never;
         };
         get: operations["get_member"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/members/{id}/evidence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_member_evidence"];
         put?: never;
         post?: never;
         delete?: never;
@@ -466,6 +514,18 @@ export interface components {
             status: string;
             title: string;
         };
+        CreateEvidence: {
+            /** Format: uuid */
+            block_id: string;
+            /** Format: int32 */
+            level_ord: number;
+            /** Format: uuid */
+            meeting_id?: string | null;
+            /** Format: uuid */
+            member_id: string;
+            note: string;
+            status: string;
+        };
         CreateFileRequest: {
             /** Format: uuid */
             meeting_id?: string | null;
@@ -516,6 +576,19 @@ export interface components {
             label: string;
             /** Format: int32 */
             ord: number;
+        };
+        Evidence: {
+            block_key: string;
+            block_name: string;
+            created_at: string;
+            /** Format: uuid */
+            id: string;
+            /** Format: int32 */
+            level_ord: number;
+            /** Format: uuid */
+            meeting_id?: string | null;
+            note: string;
+            status: string;
         };
         /** @description A meeting form field definition (from a template), for rendering the drawer. */
         FieldDef: {
@@ -1061,6 +1134,73 @@ export interface operations {
             };
         };
     };
+    create_evidence: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateEvidence"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Evidence"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    delete_evidence: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Evidence id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     create_file: {
         parameters: {
             query?: never;
@@ -1551,6 +1691,34 @@ export interface operations {
             };
             /** @description No such member */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_member_evidence: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Member id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Evidence"][];
+                };
+            };
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
