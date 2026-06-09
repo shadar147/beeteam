@@ -1,7 +1,7 @@
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::Json;
-use bt_domain::{Review, ReviewScore, UpdateReview};
+use bt_domain::{CalibrationPeer, Review, ReviewScore, UpdateReview};
 use chrono::Datelike;
 use uuid::Uuid;
 
@@ -217,6 +217,91 @@ pub async fn delete_review(
     Ok(StatusCode::NO_CONTENT)
 }
 
+#[utoipa::path(
+    post, path = "/v1/reviews/{id}/finalize",
+    params(("id" = uuid::Uuid, Path, description = "Review id")),
+    responses(
+        (status = 200, body = Review),
+        (status = 400, description = "No decision chosen"),
+        (status = 403), (status = 404), (status = 409, description = "Not a draft"),
+    )
+)]
+pub async fn finalize_review(
+    State(state): State<AppState>,
+    axum::Extension(auth): axum::Extension<AuthUser>,
+    Path(id): Path<Uuid>,
+) -> AppResult<Json<Review>> {
+    let (member_id, status) = rv_member_status(&state.pool, id).await?;
+    require_member_access(&auth, member_id, &state.pool).await?;
+    if status != "draft" {
+        return Err(AppError::Conflict("review is not a draft".into()));
+    }
+    let dec: (Option<String>,) = sqlx::query_as(
+        "SELECT decision::text FROM performance_reviews WHERE id = $1",
+    )
+    .bind(id).fetch_one(&state.pool).await?;
+    if dec.0.is_none() {
+        return Err(AppError::BadRequest("decision is required to finalize".into()));
+    }
+
+    sqlx::query(
+        "UPDATE performance_reviews SET status = 'pending', finalized_at = now(), \
+         to_grade_ord = CASE WHEN decision = 'promote' \
+                             THEN LEAST(from_grade_ord + 1, 7) \
+                             ELSE from_grade_ord END \
+         WHERE id = $1",
+    )
+    .bind(id).execute(&state.pool).await?;
+
+    let r: RvRow = sqlx::query_as(&format!("{RV_SELECT} WHERE id = $1"))
+        .bind(id).fetch_one(&state.pool).await?;
+    let scores = rv_scores(&state.pool, id).await?;
+    Ok(Json(rv_from(r, scores)))
+}
+
+#[utoipa::path(
+    get, path = "/v1/reviews/{id}/calibration",
+    params(("id" = uuid::Uuid, Path, description = "Review id")),
+    responses((status = 200, body = [CalibrationPeer]), (status = 403), (status = 404))
+)]
+pub async fn review_calibration(
+    State(state): State<AppState>,
+    axum::Extension(auth): axum::Extension<AuthUser>,
+    Path(id): Path<Uuid>,
+) -> AppResult<Json<Vec<CalibrationPeer>>> {
+    let (member_id, _) = rv_member_status(&state.pool, id).await?;
+    require_member_access(&auth, member_id, &state.pool).await?;
+
+    // Peers share the reviewed member's discipline and the review's from-grade.
+    let ctx: (Uuid, i32) = sqlx::query_as(
+        "SELECT mg.discipline_id, pr.from_grade_ord \
+         FROM performance_reviews pr JOIN member_grades mg ON mg.member_id = pr.member_id \
+         WHERE pr.id = $1",
+    )
+    .bind(id).fetch_one(&state.pool).await?;
+
+    let rows: Vec<(Uuid, String, i32, f64, Option<i32>, f64)> = sqlx::query_as(
+        "SELECT tm.id, tm.name, tm.hue, \
+                (SELECT AVG(COALESCE(mbl.level_ord, mg2.grade_ord))::float8 \
+                   FROM grade_blocks gb \
+                   LEFT JOIN member_block_levels mbl \
+                     ON mbl.block_id = gb.id AND mbl.member_grade_id = mg2.id \
+                  WHERE gb.discipline_id = mg2.discipline_id) AS avg_level, \
+                mg2.target_ord, mg2.compa \
+         FROM member_grades mg2 JOIN team_members tm ON tm.id = mg2.member_id \
+         WHERE mg2.discipline_id = $1 AND mg2.grade_ord = $2 AND mg2.member_id <> $3 \
+         ORDER BY avg_level DESC",
+    )
+    .bind(ctx.0).bind(ctx.1).bind(member_id)
+    .fetch_all(&state.pool).await?;
+
+    Ok(Json(rows.into_iter()
+        .map(|r| CalibrationPeer {
+            member_id: r.0, name: r.1, hue: r.2, avg_level: r.3, target_ord: r.4, compa: r.5,
+        })
+        .collect()))
+}
+
 #[cfg(test)]
 mod tests {
     use crate::app::{build_router, AppState};
@@ -403,6 +488,97 @@ mod tests {
 
         let (status, _) = patch_review(&pool, &token, id, r#"{"summary":"late"}"#).await;
         assert_eq!(status, StatusCode::CONFLICT);
+    }
+
+    async fn finalize(pool: &sqlx::PgPool, token: &str, id: &str) -> (StatusCode, serde_json::Value) {
+        let resp = app(pool.clone()).oneshot(
+            Request::builder().method("POST").uri(format!("/v1/reviews/{id}/finalize"))
+                .header("authorization", format!("Bearer {token}"))
+                .body(Body::empty()).unwrap(),
+        ).await.unwrap();
+        let status = resp.status();
+        let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+        let json = if bytes.is_empty() { serde_json::Value::Null } else { serde_json::from_slice(&bytes).unwrap() };
+        (status, json)
+    }
+
+    #[sqlx::test(migrations = "../bt-db/migrations")]
+    async fn finalize_promote_sets_pending_and_to_grade(pool: sqlx::PgPool) {
+        bt_db::seed::seed_demo(&pool).await.unwrap();
+        let token = login_token(&pool, "e.glebov@beeteam.io").await;
+        let anna = member_id(&pool, "Анна Лебедева").await;
+        let (_, draft) = post_review(&pool, &token, anna).await;
+        let id = draft["id"].as_str().unwrap();
+        patch_review(&pool, &token, id, r#"{"decision":"promote"}"#).await;
+
+        let (status, json) = finalize(&pool, &token, id).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(json["status"], "pending");
+        assert_eq!(json["to_grade_ord"], 6); // IC5 → IC6
+        assert!(json["finalized_at"].is_string());
+
+        // member_grades is untouched until HR approval (slice #5).
+        let mg: (i32,) = sqlx::query_as("SELECT grade_ord FROM member_grades WHERE member_id = $1")
+            .bind(anna).fetch_one(&pool).await.unwrap();
+        assert_eq!(mg.0, 5);
+    }
+
+    #[sqlx::test(migrations = "../bt-db/migrations")]
+    async fn finalize_hold_keeps_grade(pool: sqlx::PgPool) {
+        bt_db::seed::seed_demo(&pool).await.unwrap();
+        let token = login_token(&pool, "e.glebov@beeteam.io").await;
+        let anna = member_id(&pool, "Анна Лебедева").await;
+        let (_, draft) = post_review(&pool, &token, anna).await;
+        let id = draft["id"].as_str().unwrap();
+        patch_review(&pool, &token, id, r#"{"decision":"hold"}"#).await;
+
+        let (status, json) = finalize(&pool, &token, id).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(json["to_grade_ord"], 5);
+    }
+
+    #[sqlx::test(migrations = "../bt-db/migrations")]
+    async fn finalize_400_without_decision_409_when_pending(pool: sqlx::PgPool) {
+        bt_db::seed::seed_demo(&pool).await.unwrap();
+        let token = login_token(&pool, "e.glebov@beeteam.io").await;
+        let anna = member_id(&pool, "Анна Лебедева").await;
+        let (_, draft) = post_review(&pool, &token, anna).await;
+        let id = draft["id"].as_str().unwrap();
+
+        let (s1, _) = finalize(&pool, &token, id).await;
+        assert_eq!(s1, StatusCode::BAD_REQUEST); // no decision chosen
+
+        patch_review(&pool, &token, id, r#"{"decision":"hold"}"#).await;
+        finalize(&pool, &token, id).await;
+        let (s2, _) = finalize(&pool, &token, id).await;
+        assert_eq!(s2, StatusCode::CONFLICT); // already pending
+    }
+
+    #[sqlx::test(migrations = "../bt-db/migrations")]
+    async fn calibration_returns_same_discipline_same_grade_peers(pool: sqlx::PgPool) {
+        bt_db::seed::seed_demo(&pool).await.unwrap();
+        let token = login_token(&pool, "e.glebov@beeteam.io").await;
+        // Make Алексей a backend IC4 so Игорь (backend IC4) has exactly one peer.
+        sqlx::query(
+            "UPDATE member_grades SET grade_ord = 4 \
+             WHERE member_id = (SELECT id FROM team_members WHERE name = 'Алексей Романов')",
+        ).execute(&pool).await.unwrap();
+        let igor = member_id(&pool, "Игорь Петров").await;
+        let (_, draft) = post_review(&pool, &token, igor).await;
+        let id = draft["id"].as_str().unwrap();
+
+        let resp = app(pool.clone()).oneshot(
+            Request::builder().method("GET").uri(format!("/v1/reviews/{id}/calibration"))
+                .header("authorization", format!("Bearer {token}"))
+                .body(Body::empty()).unwrap(),
+        ).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+        let arr: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let peers = arr.as_array().unwrap();
+        assert_eq!(peers.len(), 1);
+        assert_eq!(peers[0]["name"], "Алексей Романов");
+        assert!(peers[0]["avg_level"].as_f64().unwrap() > 0.0);
     }
 
     #[sqlx::test(migrations = "../bt-db/migrations")]
