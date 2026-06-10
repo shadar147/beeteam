@@ -365,8 +365,9 @@ mod tests {
         // Lead prefill = her member_block_levels: stack=6.
         let stack = scores.iter().find(|s| s["block_key"] == "stack").unwrap();
         assert_eq!(stack["lead_ord"], 6);
-        // Self snapshot comes from seeded self_assessments (Task 6 seeds them;
-        // until then self_ord is null — this assert is added in Task 6).
+        let core = scores.iter().find(|s| s["block_key"] == "core").unwrap();
+        assert_eq!(core["self_ord"], 6);
+        assert_eq!(core["lead_ord"], 5);
     }
 
     #[sqlx::test(migrations = "../bt-db/migrations")]

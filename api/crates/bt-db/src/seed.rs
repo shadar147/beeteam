@@ -694,6 +694,58 @@ pub async fn seed_demo(pool: &PgPool) -> Result<(), sqlx::Error> {
         }
     }
 
+    // ── Self-assessment + review history for Анна (slice #4) ──
+    {
+        let aid = anna_id.expect("seed: Anna must exist");
+        let fe: (uuid::Uuid,) = sqlx::query_as(
+            "SELECT id FROM disciplines WHERE key = 'frontend' AND workspace_id = $1",
+        ).bind(ws_id).fetch_one(&mut *tx).await?;
+
+        // Slightly optimistic vs her block levels [6,5,5,4,6,5]: gives the
+        // assess step both «совпадает» and «расхождение +1» states.
+        let self_levels: [(&str, i32); 6] =
+            [("stack", 6), ("core", 6), ("arch", 6), ("infra", 4), ("ai", 6), ("impact", 5)];
+        let submitted = now - day * 20;
+        for (bkey, lvl) in self_levels.iter() {
+            let block: (uuid::Uuid,) = sqlx::query_as(
+                "SELECT id FROM grade_blocks WHERE key = $1 AND discipline_id = $2",
+            ).bind(*bkey).bind(fe.0).fetch_one(&mut *tx).await?;
+            sqlx::query(
+                "INSERT INTO self_assessments (member_id, block_id, level_ord, submitted_at) \
+                 VALUES ($1,$2,$3,$4)",
+            )
+            .bind(aid).bind(block.0).bind(*lvl).bind(submitted)
+            .execute(&mut *tx).await?;
+        }
+
+        // Two final reviews (ported from the prototype's reviews.t1); the newest
+        // lands on her last_review offset (-45d) so the hero dates line up.
+        // (offset_days, from, target, to, decision, summary)
+        let reviews: [(i64, i32, i32, i32, &str, &str); 2] = [
+            (-45, 5, 6, 5, "hold",
+             "Уверенный IC5. Зафиксированы первые проявления IC6 в архитектуре. Рекомендация — накапливать свидетельства к следующему ревью."),
+            (-225, 4, 5, 5, "promote",
+             "Повышение до IC5 (Senior). Стабильно проявляла senior-компетенции 6 месяцев: архитектурные решения по сервису, менторство."),
+        ];
+        for (off, from, target, to, dec, summary) in reviews.iter() {
+            let when = now + day * (*off as i32);
+            let period = format!(
+                "{} {}",
+                if chrono::Datelike::month(&when) <= 6 { "H1" } else { "H2" },
+                chrono::Datelike::year(&when)
+            );
+            sqlx::query(
+                "INSERT INTO performance_reviews \
+                 (member_id, period, status, from_grade_ord, target_ord, decision, to_grade_ord, \
+                  summary, created_by, created_at, finalized_at) \
+                 VALUES ($1,$2,'final',$3,$4,$5::review_decision,$6,$7,$8,$9,$9)",
+            )
+            .bind(aid).bind(&period).bind(*from).bind(*target).bind(*dec).bind(*to)
+            .bind(*summary).bind(lead_id).bind(when)
+            .execute(&mut *tx).await?;
+        }
+    }
+
     tx.commit().await?;
     Ok(())
 }
@@ -849,5 +901,12 @@ mod tests {
              WHERE tm.name = 'Анна Лебедева'",
         ).fetch_one(&pool).await.unwrap();
         assert!(n.0 >= 4, "Анна has seeded evidence");
+        let sa: (i64,) = sqlx::query_as("SELECT count(*) FROM self_assessments")
+            .fetch_one(&pool).await.unwrap();
+        assert_eq!(sa.0, 6, "Анна has a seeded self-assessment per block");
+        let rv: (i64,) = sqlx::query_as(
+            "SELECT count(*) FROM performance_reviews WHERE status = 'final'",
+        ).fetch_one(&pool).await.unwrap();
+        assert_eq!(rv.0, 2, "Анна has two final reviews in history");
     }
 }
