@@ -46,11 +46,12 @@ export function ReviewModal({
   const [decision, setDecision] = useState<Decision | null>((review.decision as Decision) ?? null);
   const [summary, setSummary] = useState(review.summary);
 
+  const { flush } = autosave;
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { autosave.flush(); onClose(); } };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { flush(); onClose(); } };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [autosave, onClose]);
+  }, [flush, onClose]);
 
   const grade = mg.data;
   const framework = fw.data;
