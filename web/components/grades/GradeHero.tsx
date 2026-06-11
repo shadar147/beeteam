@@ -19,6 +19,8 @@ export function GradeHero({
   mgrTrack,
   nextReview,
   lastReview,
+  activeReview = null,
+  onOpenReview,
 }: {
   gradeOrd: number;
   gradeCode: string;
@@ -31,6 +33,8 @@ export function GradeHero({
   mgrTrack: boolean;
   nextReview: string | null;
   lastReview: string | null;
+  activeReview?: "draft" | "pending" | null;
+  onOpenReview?: () => void;
 }) {
   const promoReady = targetOrd != null && targetOrd > gradeOrd;
   return (
@@ -80,6 +84,19 @@ export function GradeHero({
         <div>
           <div className="text-[10.5px] uppercase tracking-wide text-ink-4">Прошлое ревью</div>
           <div className="text-ink-2">{fmt(lastReview)}</div>
+        </div>
+        <div className="ml-auto self-center">
+          {activeReview === "pending" ? (
+            <Pill variant="accent">На согласовании HR</Pill>
+          ) : onOpenReview ? (
+            <button
+              type="button"
+              onClick={onOpenReview}
+              className="rounded-md bg-brand px-3 py-1.5 text-[13px] font-medium text-brand-text"
+            >
+              {activeReview === "draft" ? "Продолжить ревью" : "Открыть ревью"}
+            </button>
+          ) : null}
         </div>
       </div>
     </div>
