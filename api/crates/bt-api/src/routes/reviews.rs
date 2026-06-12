@@ -568,9 +568,14 @@ mod tests {
             "UPDATE member_grades SET grade_ord = 4 \
              WHERE member_id = (SELECT id FROM team_members WHERE name = 'Алексей Романов')",
         ).execute(&pool).await.unwrap();
-        let igor = member_id(&pool, "Игорь Петров").await;
-        let (_, draft) = post_review(&pool, &token, igor).await;
-        let id = draft["id"].as_str().unwrap();
+        // Игорь already has a seeded pending review (slice #5a) — use it.
+        let row: (uuid::Uuid,) = sqlx::query_as(
+            "SELECT pr.id FROM performance_reviews pr \
+             JOIN team_members tm ON tm.id = pr.member_id \
+             WHERE tm.name = 'Игорь Петров' AND pr.status = 'pending'",
+        ).fetch_one(&pool).await.unwrap();
+        let id = row.0.to_string();
+        let id = id.as_str();
 
         let resp = app(pool.clone()).oneshot(
             Request::builder().method("GET").uri(format!("/v1/reviews/{id}/calibration"))
