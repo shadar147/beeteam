@@ -449,6 +449,8 @@ pub struct Review {
     pub summary: String,
     pub created_at: String,
     pub finalized_at: Option<String>,
+    pub hr_comment: String,
+    pub resolved_at: Option<String>,
     pub scores: Vec<ReviewScore>,
 }
 
@@ -463,6 +465,21 @@ pub struct UpdateReview {
     pub scores: Option<Vec<UpdateReviewScore>>,
     pub decision: Option<String>,
     pub summary: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct PendingReview {
+    pub review: Review,
+    pub member_id: uuid::Uuid,
+    pub member_name: String,
+    pub member_hue: i32,
+    pub team_name: String,
+    pub discipline_label: String,
+}
+
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct RejectReview {
+    pub comment: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]

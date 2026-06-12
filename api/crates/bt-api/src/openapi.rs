@@ -43,6 +43,7 @@ use utoipa::OpenApi;
         crate::routes::reviews::delete_review,
         crate::routes::reviews::finalize_review,
         crate::routes::reviews::review_calibration,
+        crate::routes::approvals::list_pending_reviews,
     ),
     components(schemas(
         bt_domain::Health,
@@ -89,6 +90,8 @@ use utoipa::OpenApi;
         bt_domain::UpdateReview,
         bt_domain::CalibrationPeer,
         bt_domain::Permission,
+        bt_domain::PendingReview,
+        bt_domain::RejectReview,
     )),
     info(title = "BeeTeam API", version = "0.1.0")
 )]
