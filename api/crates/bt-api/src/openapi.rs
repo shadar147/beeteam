@@ -88,6 +88,7 @@ use utoipa::OpenApi;
         bt_domain::UpdateReviewScore,
         bt_domain::UpdateReview,
         bt_domain::CalibrationPeer,
+        bt_domain::Permission,
     )),
     info(title = "BeeTeam API", version = "0.1.0")
 )]

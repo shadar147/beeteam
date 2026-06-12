@@ -40,7 +40,11 @@ pub async fn login(
 
     Ok(Json(LoginResponse {
         token,
-        user: UserDto { id, name, email, role },
+        user: UserDto {
+            id, name, email,
+            permissions: bt_domain::permissions_of(&role).to_vec(),
+            role,
+        },
     }))
 }
 
@@ -72,7 +76,12 @@ pub async fn me(
             .fetch_optional(&state.pool)
             .await?;
 
-    Ok(Json(MeResponse { id, name, email, role, team_id: team.map(|t| t.0) }))
+    Ok(Json(MeResponse {
+        id, name, email,
+        permissions: bt_domain::permissions_of(&role).to_vec(),
+        role,
+        team_id: team.map(|t| t.0),
+    }))
 }
 
 #[cfg(test)]
@@ -149,6 +158,7 @@ mod tests {
         assert!(json["token"].as_str().unwrap().len() > 10);
         assert_eq!(json["user"]["email"], "lead@x.io");
         assert_eq!(json["user"]["role"], "lead");
+        assert_eq!(json["user"]["permissions"], serde_json::json!(["manage_team"]));
     }
 
     #[sqlx::test(migrations = "../bt-db/migrations")]
@@ -213,5 +223,6 @@ mod tests {
         let bytes = resp.into_body().collect().await.unwrap().to_bytes();
         let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
         assert!(body["team_id"].is_string(), "expected team_id, got {body}");
+        assert_eq!(body["permissions"], serde_json::json!(["manage_team"]));
     }
 }
