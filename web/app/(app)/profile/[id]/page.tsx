@@ -3,6 +3,8 @@ import { HistoryTab } from "./HistoryTab";
 import { GoalsTab } from "./GoalsTab";
 import { FilesTab } from "./FilesTab";
 import { GradeTab } from "./GradeTab";
+import { getSessionUser, hasPermission } from "@/lib/auth";
+import { NoAccess } from "@/components/NoAccess";
 
 const TABS = [
   { key: "history", label: "История 1-2-1" },
@@ -11,13 +13,16 @@ const TABS = [
   { key: "files", label: "Файлы" },
 ];
 
-export default function ProfilePage({
+export default async function ProfilePage({
   params,
   searchParams,
 }: {
   params: { id: string };
   searchParams: { tab?: string };
 }) {
+  const user = await getSessionUser();
+  if (user && !hasPermission(user, "manage_team")) return <NoAccess />;
+
   const tab = searchParams.tab ?? "history";
 
   return (
