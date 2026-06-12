@@ -1,4 +1,5 @@
 "use client";
+import { useState } from "react";
 import { useGradesFramework } from "@/lib/query/grades";
 import { useMemberGrade } from "@/lib/query/member-grade";
 import { GradeHero } from "@/components/grades/GradeHero";
@@ -8,11 +9,19 @@ import { CompaBand } from "@/components/grades/CompaBand";
 import { EvidenceTimeline } from "@/components/grades/EvidenceTimeline";
 import { GradeEmptyState } from "@/components/grades/GradeEmptyState";
 import { useMemberEvidence } from "@/lib/query/evidence";
+import { useMemberReviews, useStartReview } from "@/lib/query/reviews";
+import { useMemberDetail } from "@/lib/query/profile";
+import { ReviewHistory } from "@/components/grades/ReviewHistory";
+import { ReviewModal } from "@/components/review/ReviewModal";
 
 export function GradeTab({ memberId }: { memberId: string }) {
   const fw = useGradesFramework();
   const mg = useMemberGrade(memberId);
   const ev = useMemberEvidence(memberId);
+  const reviews = useMemberReviews(memberId);
+  const detail = useMemberDetail(memberId);
+  const start = useStartReview(memberId);
+  const [reviewOpen, setReviewOpen] = useState(false);
 
   if (fw.isLoading || mg.isLoading || ev.isLoading) return <div className="text-[13px] text-ink-3">Загрузка…</div>;
   if (fw.isError || mg.isError || ev.isError)
@@ -34,6 +43,16 @@ export function GradeTab({ memberId }: { memberId: string }) {
     grade.block_levels.find((bl) => bl.block_key === blockKey)?.level_ord ?? grade.grade_ord;
 
   const blocks = discipline.blocks.map((b) => ({ name: b.name, cur: blockLevelOf(b.key) }));
+
+  const reviewList = reviews.data ?? [];
+  const activeDraft = reviewList.find((r) => r.status === "draft") ?? null;
+  const activePending = reviewList.find((r) => r.status === "pending") ?? null;
+  const openReview = () => {
+    if (activeDraft) { setReviewOpen(true); return; }
+    start.mutate(undefined, { onSuccess: () => setReviewOpen(true) });
+  };
+  const modalReview = activeDraft ?? start.data ?? null;
+  const codeOf = (ord: number) => levels.find((l) => l.ord === ord)?.code ?? `IC${ord}`;
 
   const growItems =
     grade.target_ord != null
@@ -77,6 +96,8 @@ export function GradeTab({ memberId }: { memberId: string }) {
           mgrTrack={grade.mgr_track}
           nextReview={grade.next_review ?? null}
           lastReview={grade.last_review ?? null}
+          activeReview={activePending ? "pending" : activeDraft ? "draft" : null}
+          onOpenReview={activePending ? undefined : openReview}
         />
       </div>
       <div className="space-y-4">
@@ -85,8 +106,18 @@ export function GradeTab({ memberId }: { memberId: string }) {
       </div>
       <div className="space-y-4">
         <CompaBand compa={grade.compa} gradeCode={cur.code} />
+        <ReviewHistory reviews={reviewList} codeOf={codeOf} />
         <EvidenceTimeline evidence={evidence} />
       </div>
+      {reviewOpen && modalReview && detail.data && (
+        <ReviewModal
+          memberId={memberId}
+          memberName={detail.data.name}
+          memberHue={detail.data.hue}
+          review={modalReview}
+          onClose={() => setReviewOpen(false)}
+        />
+      )}
     </div>
   );
 }
