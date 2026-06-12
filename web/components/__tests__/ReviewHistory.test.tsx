@@ -46,6 +46,7 @@ describe("GradeHero review action", () => {
   it("offers to continue a draft", () => {
     render(<GradeHero {...HERO} activeReview="draft" onOpenReview={() => {}} />);
     expect(screen.getByRole("button", { name: /Продолжить ревью/ })).toBeInTheDocument();
+    expect(screen.getByText("черновик")).toBeInTheDocument();
   });
   it("shows the pending pill instead of a button", () => {
     render(<GradeHero {...HERO} activeReview="pending" onOpenReview={() => {}} />);

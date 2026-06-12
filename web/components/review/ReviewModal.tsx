@@ -40,6 +40,7 @@ export function ReviewModal({
   const del = useDeleteReview(memberId);
 
   const [step, setStep] = useState(0);
+  const [finishError, setFinishError] = useState(false);
   const [leads, setLeads] = useState<Record<string, number>>(
     () => Object.fromEntries(review.scores.map((s) => [s.block_id, s.lead_ord])),
   );
@@ -111,10 +112,17 @@ export function ReviewModal({
   const onSummary = (s: string) => { setSummary(s); autosave.schedule({ summary: s }); };
 
   const finish = async () => {
-    // Direct save (not the debounced one) so finalize never races the autosave.
-    await update.mutateAsync({ scores: scoresPatch(), decision: decision ?? undefined, summary });
-    await finalize.mutateAsync(review.id);
-    onClose();
+    // The direct save below carries the full state, so the queued debounce patch
+    // is redundant — cancel it to avoid a stray PATCH landing after finalize.
+    autosave.cancel();
+    setFinishError(false);
+    try {
+      await update.mutateAsync({ scores: scoresPatch(), decision: decision ?? undefined, summary });
+      await finalize.mutateAsync(review.id);
+      onClose();
+    } catch {
+      setFinishError(true);
+    }
   };
   const cancelDraft = () => {
     if (window.confirm("Удалить черновик ревью? Оценки и резюме будут потеряны.")) {
@@ -212,6 +220,7 @@ export function ReviewModal({
       <div className="flex items-center justify-between border-t border-line px-6 py-3.5">
         <div className="flex items-center gap-4 text-[12px] text-ink-3">
           <span>{hints[step]}</span>
+          {finishError && <span className="text-miss">Не удалось завершить ревью — попробуйте ещё раз.</span>}
           {step === 0 && (
             <button type="button" onClick={cancelDraft}
               className="inline-flex items-center gap-1 text-ink-4 hover:text-miss">

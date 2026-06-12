@@ -76,6 +76,11 @@ export function useReviewAutosave(reviewId: string, memberId: string, delay = 80
     send();
   }, [send]);
 
+  const cancel = useCallback(() => {
+    if (timer.current) clearTimeout(timer.current);
+    pending.current = null;
+  }, []);
+
   const status: SaveStatus = mutation.isPending
     ? "saving"
     : mutation.isError
@@ -84,7 +89,7 @@ export function useReviewAutosave(reviewId: string, memberId: string, delay = 80
         ? "saved"
         : "idle";
 
-  return { schedule, flush, status };
+  return { schedule, flush, cancel, status };
 }
 
 export function useFinalizeReview(memberId: string) {

@@ -85,17 +85,20 @@ export function GradeHero({
           <div className="text-[10.5px] uppercase tracking-wide text-ink-4">Прошлое ревью</div>
           <div className="text-ink-2">{fmt(lastReview)}</div>
         </div>
-        <div className="ml-auto self-center">
+        <div className="ml-auto flex items-center gap-2 self-center">
           {activeReview === "pending" ? (
             <Pill variant="accent">На согласовании HR</Pill>
           ) : onOpenReview ? (
-            <button
-              type="button"
-              onClick={onOpenReview}
-              className="rounded-md bg-brand px-3 py-1.5 text-[13px] font-medium text-brand-text"
-            >
-              {activeReview === "draft" ? "Продолжить ревью" : "Открыть ревью"}
-            </button>
+            <>
+              {activeReview === "draft" && <Pill variant="accent">черновик</Pill>}
+              <button
+                type="button"
+                onClick={onOpenReview}
+                className="rounded-md bg-brand px-3 py-1.5 text-[13px] font-medium text-brand-text"
+              >
+                {activeReview === "draft" ? "Продолжить ревью" : "Открыть ревью"}
+              </button>
+            </>
           ) : null}
         </div>
       </div>
