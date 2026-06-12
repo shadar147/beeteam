@@ -33,7 +33,7 @@ export function ReviewHistory({ reviews, codeOf }: { reviews: Review[]; codeOf: 
                 {r.status === "pending"
                   ? <Pill variant="accent">на согласовании</Pill>
                   : r.decision && <span className="text-[11.5px] text-ink-3">{DECISION_LABEL[r.decision] ?? r.decision}</span>}
-                <span className="ml-auto text-[11px] text-ink-4">{fmt(r.finalized_at)}</span>
+                <span className="ml-auto text-[11px] text-ink-4">{fmt(r.resolved_at ?? r.finalized_at)}</span>
               </div>
               {r.summary && <p className="mt-1 text-[12px] leading-relaxed text-ink-3">{r.summary}</p>}
             </div>

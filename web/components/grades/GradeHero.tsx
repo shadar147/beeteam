@@ -20,6 +20,7 @@ export function GradeHero({
   nextReview,
   lastReview,
   activeReview = null,
+  returned = false,
   onOpenReview,
 }: {
   gradeOrd: number;
@@ -34,6 +35,7 @@ export function GradeHero({
   nextReview: string | null;
   lastReview: string | null;
   activeReview?: "draft" | "pending" | null;
+  returned?: boolean;
   onOpenReview?: () => void;
 }) {
   const promoReady = targetOrd != null && targetOrd > gradeOrd;
@@ -90,7 +92,9 @@ export function GradeHero({
             <Pill variant="accent">На согласовании HR</Pill>
           ) : onOpenReview ? (
             <>
-              {activeReview === "draft" && <Pill variant="accent">черновик</Pill>}
+              {activeReview === "draft" && (
+                <Pill variant="accent">{returned ? "возвращено HR" : "черновик"}</Pill>
+              )}
               <button
                 type="button"
                 onClick={onOpenReview}

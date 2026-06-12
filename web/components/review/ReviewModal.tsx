@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
-import { Flag, Layers, Scale, Award, Check, ArrowRight, Trash2 } from "lucide-react";
+import { Flag, Layers, Scale, Award, Check, ArrowRight, Trash2, Undo2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Avatar } from "@/components/Avatar";
 import { useGradesFramework } from "@/lib/query/grades";
@@ -187,6 +187,14 @@ export function ReviewModal({
 
       {/* body */}
       <div className="max-h-[62vh] overflow-y-auto px-6 py-5">
+        {review.status === "draft" && review.hr_comment && (
+          <div className="mb-4 flex items-start gap-2.5 rounded-lg border border-brand/40 bg-brand-soft p-3 text-[12.5px] text-ink-2">
+            <Undo2 size={15} className="mt-0.5 shrink-0 text-brand-strong" />
+            <div>
+              <b>Возвращено HR:</b> {review.hr_comment}
+            </div>
+          </div>
+        )}
         {step === 0 && (
           <ReviewPrep
             gradeCode={fromCode} targetCode={targetCode} promo={promo}
