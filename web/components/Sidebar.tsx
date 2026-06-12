@@ -4,7 +4,7 @@ import { Logo } from "./Logo";
 import { Avatar } from "./Avatar";
 import { NavItem } from "./NavItem";
 import { Bell, LogOut } from "lucide-react";
-import { hasPermission, type SessionUser } from "@/lib/auth";
+import { hasPermission, type SessionUser } from "@/lib/permissions";
 import { usePendingReviews } from "@/lib/query/approvals";
 
 type Nav = {

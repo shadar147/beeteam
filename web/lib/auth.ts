@@ -1,16 +1,12 @@
 import { cookies } from "next/headers";
+export type { SessionUser } from "./permissions";
+export { hasPermission } from "./permissions";
 
 export const SESSION_COOKIE = "bt_session";
 const API = process.env.API_INTERNAL_URL ?? "http://localhost:8080";
 
-export type SessionUser = {
-  id: string; name: string; email: string; role: string;
-  teamId: string | null;
-  permissions: string[];
-};
-
 /** Server-side: read the current user from the session cookie via /v1/auth/me. */
-export async function getSessionUser(): Promise<SessionUser | null> {
+export async function getSessionUser(): Promise<import("./permissions").SessionUser | null> {
   const token = cookies().get(SESSION_COOKIE)?.value;
   if (!token) return null;
   try {
@@ -32,6 +28,3 @@ export async function getSessionUser(): Promise<SessionUser | null> {
   }
 }
 
-export function hasPermission(user: Pick<SessionUser, "permissions">, p: string): boolean {
-  return user.permissions.includes(p);
-}
