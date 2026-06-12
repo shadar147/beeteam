@@ -44,6 +44,8 @@ use utoipa::OpenApi;
         crate::routes::reviews::finalize_review,
         crate::routes::reviews::review_calibration,
         crate::routes::approvals::list_pending_reviews,
+        crate::routes::approvals::approve_review,
+        crate::routes::approvals::reject_review,
     ),
     components(schemas(
         bt_domain::Health,
