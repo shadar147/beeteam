@@ -3,7 +3,11 @@ import { cookies } from "next/headers";
 export const SESSION_COOKIE = "bt_session";
 const API = process.env.API_INTERNAL_URL ?? "http://localhost:8080";
 
-export type SessionUser = { id: string; name: string; email: string; role: string; teamId: string | null };
+export type SessionUser = {
+  id: string; name: string; email: string; role: string;
+  teamId: string | null;
+  permissions: string[];
+};
 
 /** Server-side: read the current user from the session cookie via /v1/auth/me. */
 export async function getSessionUser(): Promise<SessionUser | null> {
@@ -15,9 +19,19 @@ export async function getSessionUser(): Promise<SessionUser | null> {
       cache: "no-store",
     });
     if (!res.ok) return null;
-    const me = (await res.json()) as { id: string; name: string; email: string; role: string; team_id: string | null };
-    return { id: me.id, name: me.name, email: me.email, role: me.role, teamId: me.team_id };
+    const me = (await res.json()) as {
+      id: string; name: string; email: string; role: string;
+      team_id: string | null; permissions?: string[];
+    };
+    return {
+      id: me.id, name: me.name, email: me.email, role: me.role,
+      teamId: me.team_id, permissions: me.permissions ?? [],
+    };
   } catch {
     return null;
   }
+}
+
+export function hasPermission(user: Pick<SessionUser, "permissions">, p: string): boolean {
+  return user.permissions.includes(p);
 }
