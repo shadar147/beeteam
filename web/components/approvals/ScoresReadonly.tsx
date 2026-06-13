@@ -3,10 +3,10 @@ import { Pill } from "@/components/Pill";
 import type { ReviewScore } from "@/lib/query/reviews";
 
 export function ScoresReadonly({ scores }: { scores: ReviewScore[] }) {
-  const hasSelf = scores.every((s) => s.self_ord != null);
+  const anySelf = scores.some((s) => s.self_ord != null);
   return (
     <div className="space-y-1.5">
-      {!hasSelf && (
+      {!anySelf && (
         <p className="text-[12px] text-ink-3">Самооценка не получена — показана только оценка лида.</p>
       )}
       {scores.map((s) => {

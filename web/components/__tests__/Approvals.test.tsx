@@ -22,10 +22,16 @@ const PENDING = {
 };
 
 describe("ScoresReadonly", () => {
-  it("renders rows with mismatch pills and the no-self note", () => {
+  it("renders rows with mismatch pills; no note when some self exists", () => {
     render(<ScoresReadonly scores={SCORES as never} />);
     expect(screen.getByText("Стек")).toBeInTheDocument();
     expect(screen.getByText("совпадает")).toBeInTheDocument();
+    expect(screen.queryByText(/Самооценка не получена/)).not.toBeInTheDocument();
+  });
+
+  it("shows the no-self note only when no block has a self-assessment", () => {
+    const allNull = SCORES.map((s) => ({ ...s, self_ord: null }));
+    render(<ScoresReadonly scores={allNull as never} />);
     expect(screen.getByText(/Самооценка не получена/)).toBeInTheDocument();
   });
 });
@@ -46,7 +52,7 @@ describe("ApprovalDetail", () => {
     const onApprove = vi.fn();
     render(<ApprovalDetail item={PENDING as never} onApprove={onApprove} onReject={() => {}} busy={false} />);
     fireEvent.click(screen.getByRole("button", { name: "Согласовать" }));
-    expect(screen.getByText(/IC4 → IC5/)).toBeInTheDocument();
+    expect(screen.getAllByText(/IC4 → IC5/).length).toBeGreaterThan(0);
     expect(screen.getByText(/следующее ревью через 6 мес/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Подтвердить" }));
     expect(onApprove).toHaveBeenCalledWith("r1");
