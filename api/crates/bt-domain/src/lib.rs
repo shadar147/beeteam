@@ -492,6 +492,50 @@ pub struct CalibrationPeer {
     pub compa: f64,
 }
 
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct UpdateLevel {
+    pub ord: i32,
+    pub name: String,
+    pub exp: String,
+    pub autonomy: String,
+    pub scope: String,
+}
+
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct UpdateLevels {
+    pub levels: Vec<UpdateLevel>,
+}
+
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct PutCell {
+    pub level_ord: i32,
+    pub text: Option<String>,
+    pub required: bool,
+}
+
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct PutBlock {
+    pub id: Option<uuid::Uuid>, // Some = existing, None = new
+    pub name: String,
+    pub cells: Vec<PutCell>,
+}
+
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct PutDiscipline {
+    pub label: String,
+    pub icon: String,
+    pub description: String,
+    pub blocks: Vec<PutBlock>, // array order = ord
+}
+
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct CreateDiscipline {
+    pub label: String,
+    pub icon: String,
+    pub description: String,
+    pub copy_from_discipline_id: uuid::Uuid,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
