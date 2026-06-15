@@ -74,6 +74,7 @@ pub fn build_router(state: AppState) -> Router {
         .route("/v1/members/:id/files.zip", get(routes::files::download_files_zip))
         .route("/v1/templates/:id", get(routes::templates::get_template))
         .route("/v1/grades/framework", get(routes::grades::get_framework))
+        .route("/v1/grades/levels", axum::routing::patch(routes::grades::update_levels))
         .route_layer(axum::middleware::from_fn_with_state(state.clone(), require_auth));
 
     Router::new()

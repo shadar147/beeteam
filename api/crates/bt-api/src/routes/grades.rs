@@ -1,10 +1,29 @@
 use crate::auth::middleware::AuthUser;
+use crate::auth::permissions::require_permission;
 use crate::error::{AppError, AppResult};
 use crate::app::AppState;
 use axum::extract::State;
 use axum::Json;
-use bt_domain::{Discipline, GradeBlock, GradeLevel, GradesFramework, MatrixCell};
+use bt_domain::{Discipline, GradeBlock, GradeLevel, GradesFramework, MatrixCell, Permission, UpdateLevels};
 use uuid::Uuid;
+
+pub(crate) async fn workspace_of(pool: &sqlx::PgPool, user_id: Uuid) -> AppResult<Uuid> {
+    let ws: Option<(Uuid,)> = sqlx::query_as("SELECT workspace_id FROM users WHERE id = $1")
+        .bind(user_id).fetch_optional(pool).await?;
+    Ok(ws.ok_or(AppError::Unauthorized)?.0)
+}
+
+pub(crate) async fn levels_of(pool: &sqlx::PgPool, workspace_id: Uuid) -> AppResult<Vec<GradeLevel>> {
+    let rows = sqlx::query_as::<_, (i32, String, String, String, String, String, bool, f64, f64, f64)>(
+        "SELECT ord, code, name, exp, autonomy, scope, mgr, band_low, band_mid, band_high \
+         FROM grade_levels WHERE workspace_id = $1 ORDER BY ord",
+    )
+    .bind(workspace_id).fetch_all(pool).await?;
+    Ok(rows.into_iter().map(|r| GradeLevel {
+        ord: r.0, code: r.1, name: r.2, exp: r.3, autonomy: r.4, scope: r.5,
+        mgr: r.6, band_low: r.7, band_mid: r.8, band_high: r.9,
+    }).collect())
+}
 
 #[utoipa::path(
     get, path = "/v1/grades/framework",
@@ -14,27 +33,9 @@ pub async fn get_framework(
     State(state): State<AppState>,
     axum::Extension(auth): axum::Extension<AuthUser>,
 ) -> AppResult<Json<GradesFramework>> {
-    let ws: (Uuid,) = sqlx::query_as("SELECT workspace_id FROM users WHERE id = $1")
-        .bind(auth.id)
-        .fetch_optional(&state.pool)
-        .await?
-        .ok_or(AppError::Unauthorized)?;
-    let workspace_id = ws.0;
+    let workspace_id = workspace_of(&state.pool, auth.id).await?;
 
-    let levels: Vec<GradeLevel> = sqlx::query_as::<_, (
-        i32, String, String, String, String, String, bool, f64, f64, f64,
-    )>(
-        "SELECT ord, code, name, exp, autonomy, scope, mgr, band_low, band_mid, band_high \
-         FROM grade_levels WHERE workspace_id = $1 ORDER BY ord",
-    )
-    .bind(workspace_id)
-    .fetch_all(&state.pool).await?
-    .into_iter()
-    .map(|r| GradeLevel {
-        ord: r.0, code: r.1, name: r.2, exp: r.3, autonomy: r.4, scope: r.5,
-        mgr: r.6, band_low: r.7, band_mid: r.8, band_high: r.9,
-    })
-    .collect();
+    let levels = levels_of(&state.pool, workspace_id).await?;
 
     let disc_rows: Vec<(Uuid, String, String, String, String, i32)> = sqlx::query_as(
         "SELECT id, key, label, icon, description, ord FROM disciplines \
@@ -73,6 +74,35 @@ pub async fn get_framework(
     Ok(Json(GradesFramework { levels, disciplines }))
 }
 
+#[utoipa::path(
+    patch, path = "/v1/grades/levels", request_body = UpdateLevels,
+    responses((status = 200, body = [GradeLevel]), (status = 400), (status = 403))
+)]
+pub async fn update_levels(
+    State(state): State<AppState>,
+    axum::Extension(auth): axum::Extension<AuthUser>,
+    Json(body): Json<UpdateLevels>,
+) -> AppResult<Json<Vec<GradeLevel>>> {
+    require_permission(&auth, Permission::EditFramework)?;
+    if body.levels.iter().any(|l| l.name.trim().is_empty()) {
+        return Err(AppError::BadRequest("level name must not be empty".into()));
+    }
+    let workspace_id = workspace_of(&state.pool, auth.id).await?;
+
+    let mut tx = state.pool.begin().await?;
+    for l in &body.levels {
+        sqlx::query(
+            "UPDATE grade_levels SET name = $3, exp = $4, autonomy = $5, scope = $6 \
+             WHERE ord = $2 AND workspace_id = $1",
+        )
+        .bind(workspace_id).bind(l.ord).bind(&l.name).bind(&l.exp).bind(&l.autonomy).bind(&l.scope)
+        .execute(&mut *tx).await?;
+    }
+    tx.commit().await?;
+
+    Ok(Json(levels_of(&state.pool, workspace_id).await?))
+}
+
 #[cfg(test)]
 mod tests {
     use crate::app::{build_router, AppState};
@@ -100,6 +130,49 @@ mod tests {
         ).await.unwrap();
         let bytes = resp.into_body().collect().await.unwrap().to_bytes();
         serde_json::from_slice::<serde_json::Value>(&bytes).unwrap()["token"].as_str().unwrap().to_string()
+    }
+
+    async fn patch_levels(pool: &sqlx::PgPool, token: &str, body: &str) -> StatusCode {
+        app(pool.clone()).oneshot(
+            Request::builder().method("PATCH").uri("/v1/grades/levels")
+                .header("authorization", format!("Bearer {token}"))
+                .header("content-type", "application/json")
+                .body(Body::from(body.to_string())).unwrap(),
+        ).await.unwrap().status()
+    }
+
+    #[sqlx::test(migrations = "../bt-db/migrations")]
+    async fn patch_levels_updates_text_only(pool: sqlx::PgPool) {
+        bt_db::seed::seed_demo(&pool).await.unwrap();
+        let hr = login_token(&pool, "o.klimova@beeteam.io").await;
+        let status = patch_levels(&pool, &hr,
+            r#"{"levels":[{"ord":1,"name":"Стажёр+","exp":"0–1 год","autonomy":"a","scope":"s"}]}"#).await;
+        assert_eq!(status, StatusCode::OK);
+
+        let row: (String, f64, bool) = sqlx::query_as(
+            "SELECT name, band_mid, mgr FROM grade_levels WHERE ord = 1 \
+             AND workspace_id = (SELECT workspace_id FROM users WHERE email='o.klimova@beeteam.io')",
+        ).fetch_one(&pool).await.unwrap();
+        assert_eq!(row.0, "Стажёр+");
+        assert!(row.1 > 0.0, "band_mid untouched");
+    }
+
+    #[sqlx::test(migrations = "../bt-db/migrations")]
+    async fn patch_levels_forbidden_for_lead(pool: sqlx::PgPool) {
+        bt_db::seed::seed_demo(&pool).await.unwrap();
+        let lead = login_token(&pool, "e.glebov@beeteam.io").await;
+        let status = patch_levels(&pool, &lead,
+            r#"{"levels":[{"ord":1,"name":"X","exp":"","autonomy":"","scope":""}]}"#).await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+    }
+
+    #[sqlx::test(migrations = "../bt-db/migrations")]
+    async fn patch_levels_rejects_empty_name(pool: sqlx::PgPool) {
+        bt_db::seed::seed_demo(&pool).await.unwrap();
+        let hr = login_token(&pool, "o.klimova@beeteam.io").await;
+        let status = patch_levels(&pool, &hr,
+            r#"{"levels":[{"ord":1,"name":"  ","exp":"","autonomy":"","scope":""}]}"#).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
     }
 
     #[sqlx::test(migrations = "../bt-db/migrations")]
