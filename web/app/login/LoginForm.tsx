@@ -26,7 +26,9 @@ export function LoginForm() {
         setError("Неверная почта или пароль");
         return;
       }
-      router.push("/");
+      const data = (await res.json()) as { user?: { permissions?: string[] } };
+      const perms = data.user?.permissions ?? [];
+      router.push(perms.includes("approve_reviews") && !perms.includes("manage_team") ? "/approvals" : "/");
     } catch {
       setError("Не удалось войти. Попробуйте ещё раз.");
     } finally {

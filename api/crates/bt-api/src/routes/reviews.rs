@@ -10,15 +10,17 @@ use crate::auth::middleware::AuthUser;
 use crate::error::{AppError, AppResult};
 use crate::routes::members::require_member_access;
 
-type RvRow = (
+pub(crate) type RvRow = (
     Uuid, String, String, i32, Option<i32>, Option<String>, Option<i32>, String,
     chrono::DateTime<chrono::Utc>, Option<chrono::DateTime<chrono::Utc>>,
+    String, Option<chrono::DateTime<chrono::Utc>>,
 );
 
-const RV_SELECT: &str = "SELECT id, period, status::text, from_grade_ord, target_ord, \
-    decision::text, to_grade_ord, summary, created_at, finalized_at FROM performance_reviews";
+pub(crate) const RV_SELECT: &str = "SELECT id, period, status::text, from_grade_ord, target_ord, \
+    decision::text, to_grade_ord, summary, created_at, finalized_at, \
+    hr_comment, resolved_at FROM performance_reviews";
 
-fn rv_from(r: RvRow, scores: Vec<ReviewScore>) -> Review {
+pub(crate) fn rv_from(r: RvRow, scores: Vec<ReviewScore>) -> Review {
     Review {
         id: r.0,
         period: r.1,
@@ -30,11 +32,13 @@ fn rv_from(r: RvRow, scores: Vec<ReviewScore>) -> Review {
         summary: r.7,
         created_at: r.8.to_rfc3339(),
         finalized_at: r.9.map(|d| d.to_rfc3339()),
+        hr_comment: r.10,
+        resolved_at: r.11.map(|d| d.to_rfc3339()),
         scores,
     }
 }
 
-async fn rv_scores(pool: &sqlx::PgPool, review_id: Uuid) -> AppResult<Vec<ReviewScore>> {
+pub(crate) async fn rv_scores(pool: &sqlx::PgPool, review_id: Uuid) -> AppResult<Vec<ReviewScore>> {
     let rows: Vec<(Uuid, String, String, Option<i32>, i32)> = sqlx::query_as(
         "SELECT rs.block_id, gb.key, gb.name, rs.self_ord, rs.lead_ord \
          FROM review_scores rs JOIN grade_blocks gb ON gb.id = rs.block_id \
@@ -47,7 +51,7 @@ async fn rv_scores(pool: &sqlx::PgPool, review_id: Uuid) -> AppResult<Vec<Review
 }
 
 /// (member_id, status) of a review, or 404.
-async fn rv_member_status(pool: &sqlx::PgPool, id: Uuid) -> AppResult<(Uuid, String)> {
+pub(crate) async fn rv_member_status(pool: &sqlx::PgPool, id: Uuid) -> AppResult<(Uuid, String)> {
     let r: Option<(Uuid, String)> = sqlx::query_as(
         "SELECT member_id, status::text FROM performance_reviews WHERE id = $1",
     )
@@ -564,9 +568,14 @@ mod tests {
             "UPDATE member_grades SET grade_ord = 4 \
              WHERE member_id = (SELECT id FROM team_members WHERE name = 'Алексей Романов')",
         ).execute(&pool).await.unwrap();
-        let igor = member_id(&pool, "Игорь Петров").await;
-        let (_, draft) = post_review(&pool, &token, igor).await;
-        let id = draft["id"].as_str().unwrap();
+        // Игорь already has a seeded pending review (slice #5a) — use it.
+        let row: (uuid::Uuid,) = sqlx::query_as(
+            "SELECT pr.id FROM performance_reviews pr \
+             JOIN team_members tm ON tm.id = pr.member_id \
+             WHERE tm.name = 'Игорь Петров' AND pr.status = 'pending'",
+        ).fetch_one(&pool).await.unwrap();
+        let id = row.0.to_string();
+        let id = id.as_str();
 
         let resp = app(pool.clone()).oneshot(
             Request::builder().method("GET").uri(format!("/v1/reviews/{id}/calibration"))

@@ -97,6 +97,7 @@ export function GradeTab({ memberId }: { memberId: string }) {
           nextReview={grade.next_review ?? null}
           lastReview={grade.last_review ?? null}
           activeReview={activePending ? "pending" : activeDraft ? "draft" : null}
+          returned={Boolean(activeDraft && activeDraft.hr_comment)}
           onOpenReview={activePending ? undefined : openReview}
         />
       </div>

@@ -420,6 +420,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/reviews/pending": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_pending_reviews"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/reviews/{id}": {
         parameters: {
             query?: never;
@@ -434,6 +450,22 @@ export interface paths {
         options?: never;
         head?: never;
         patch: operations["update_review"];
+        trace?: never;
+    };
+    "/v1/reviews/{id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["approve_review"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/v1/reviews/{id}/calibration": {
@@ -462,6 +494,22 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["finalize_review"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/reviews/{id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["reject_review"];
         delete?: never;
         options?: never;
         head?: never;
@@ -776,6 +824,7 @@ export interface components {
             /** Format: uuid */
             id: string;
             name: string;
+            permissions: components["schemas"]["Permission"][];
             role: string;
             /** Format: uuid */
             team_id?: string | null;
@@ -870,15 +919,36 @@ export interface components {
             tags: string[];
             tz: string;
         };
+        PendingReview: {
+            discipline_label: string;
+            /** Format: int32 */
+            member_hue: number;
+            /** Format: uuid */
+            member_id: string;
+            member_name: string;
+            review: components["schemas"]["Review"];
+            team_name: string;
+        };
+        /**
+         * @description Workspace-global capabilities. Lead↔member data access stays ownership-based
+         *     (`require_member_access`) and is NOT modeled as a permission.
+         * @enum {string}
+         */
+        Permission: "manage_team" | "approve_reviews" | "edit_framework" | "edit_salary_bands";
+        RejectReview: {
+            comment: string;
+        };
         Review: {
             created_at: string;
             decision?: string | null;
             finalized_at?: string | null;
             /** Format: int32 */
             from_grade_ord: number;
+            hr_comment: string;
             /** Format: uuid */
             id: string;
             period: string;
+            resolved_at?: string | null;
             scores: components["schemas"]["ReviewScore"][];
             status: string;
             summary: string;
@@ -970,6 +1040,7 @@ export interface components {
             /** Format: uuid */
             id: string;
             name: string;
+            permissions: components["schemas"]["Permission"][];
             role: string;
         };
     };
@@ -2068,6 +2139,31 @@ export interface operations {
             };
         };
     };
+    list_pending_reviews: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PendingReview"][];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     delete_review: {
         parameters: {
             query?: never;
@@ -2157,6 +2253,47 @@ export interface operations {
             };
         };
     };
+    approve_review: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Review id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Review"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Review is not pending */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     review_calibration: {
         parameters: {
             query?: never;
@@ -2231,6 +2368,58 @@ export interface operations {
                 content?: never;
             };
             /** @description Not a draft */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    reject_review: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Review id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RejectReview"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Review"];
+                };
+            };
+            /** @description Empty comment */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Review is not pending */
             409: {
                 headers: {
                     [name: string]: unknown;

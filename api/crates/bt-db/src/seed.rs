@@ -38,6 +38,15 @@ pub async fn seed_demo(pool: &PgPool) -> Result<(), sqlx::Error> {
     .await?;
     let lead_id = lead.0;
 
+    // HR administrator (slice #5a): sees the approvals queue, no team.
+    sqlx::query(
+        "INSERT INTO users (workspace_id, email, password_hash, name, role, hue) \
+         VALUES ($1, $2, $3, $4, 'hr_admin'::user_role, $5)",
+    )
+    .bind(ws_id).bind("o.klimova@beeteam.io").bind(seed_hash("demo1234"))
+    .bind("Ольга Климова").bind(200)
+    .execute(&mut *tx).await?;
+
     // Base field template
     let tpl: (uuid::Uuid,) = sqlx::query_as(
         "INSERT INTO field_templates (workspace_id, name, description, system, version, updated_by) \
@@ -746,6 +755,49 @@ pub async fn seed_demo(pool: &PgPool) -> Result<(), sqlx::Error> {
         }
     }
 
+    // ── Pending review for Игорь (slice #5a): the HR queue is non-empty out of the box ──
+    {
+        let igor: (uuid::Uuid,) = sqlx::query_as(
+            "SELECT id FROM team_members WHERE name = 'Игорь Петров' AND team_id = $1",
+        ).bind(team_id).fetch_one(&mut *tx).await?;
+        let mg: (uuid::Uuid, uuid::Uuid) = sqlx::query_as(
+            "SELECT id, discipline_id FROM member_grades WHERE member_id = $1",
+        ).bind(igor.0).fetch_one(&mut *tx).await?;
+
+        let submitted = now - day * 2;
+        let period = format!(
+            "{} {}",
+            if chrono::Datelike::month(&submitted) <= 6 { "H1" } else { "H2" },
+            chrono::Datelike::year(&submitted)
+        );
+        let review: (uuid::Uuid,) = sqlx::query_as(
+            "INSERT INTO performance_reviews \
+             (member_id, period, status, from_grade_ord, target_ord, decision, to_grade_ord, \
+              summary, created_by, created_at, finalized_at) \
+             VALUES ($1,$2,'pending',4,5,'promote'::review_decision,5,$3,$4,$5,$5) RETURNING id",
+        )
+        .bind(igor.0).bind(&period)
+        .bind("Стабильно закрывает сервисы уровня IC5: вёл миграцию платёжного контура, поднял перфоманс-тесты. Готов к повышению.")
+        .bind(lead_id).bind(submitted)
+        .fetch_one(&mut *tx).await?;
+
+        // Lead scores: his block levels [4,5,4,4,3,3] with three +1 bumps.
+        // self_ord stays NULL — Игорь has no seeded self-assessment.
+        let lead_scores: [(&str, i32); 6] =
+            [("stack", 5), ("core", 5), ("arch", 5), ("infra", 4), ("ai", 4), ("impact", 3)];
+        for (bkey, lvl) in lead_scores.iter() {
+            let block: (uuid::Uuid,) = sqlx::query_as(
+                "SELECT id FROM grade_blocks WHERE key = $1 AND discipline_id = $2",
+            ).bind(*bkey).bind(mg.1).fetch_one(&mut *tx).await?;
+            sqlx::query(
+                "INSERT INTO review_scores (review_id, block_id, self_ord, lead_ord) \
+                 VALUES ($1,$2,NULL,$3)",
+            )
+            .bind(review.0).bind(block.0).bind(*lvl)
+            .execute(&mut *tx).await?;
+        }
+    }
+
     tx.commit().await?;
     Ok(())
 }
@@ -908,5 +960,13 @@ mod tests {
             "SELECT count(*) FROM performance_reviews WHERE status = 'final'",
         ).fetch_one(&pool).await.unwrap();
         assert_eq!(rv.0, 2, "Анна has two final reviews in history");
+
+        let users: (i64,) = sqlx::query_as("SELECT count(*) FROM users")
+            .fetch_one(&pool).await.unwrap();
+        assert_eq!(users.0, 2, "lead + HR admin");
+        let pending: (i64,) = sqlx::query_as(
+            "SELECT count(*) FROM performance_reviews WHERE status = 'pending'",
+        ).fetch_one(&pool).await.unwrap();
+        assert_eq!(pending.0, 1, "Игорь's review awaits HR");
     }
 }

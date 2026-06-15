@@ -1,5 +1,6 @@
+import React from "react";
 import Link from "next/link";
-import { Users, Calendar, Layers, SlidersHorizontal, Download, User, Settings, type LucideIcon } from "lucide-react";
+import { Users, Calendar, Layers, SlidersHorizontal, Download, User, Settings, ClipboardCheck, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const ICONS: Record<string, LucideIcon> = {
@@ -10,6 +11,7 @@ const ICONS: Record<string, LucideIcon> = {
   download: Download,
   user: User,
   settings: Settings,
+  approvals: ClipboardCheck,
 };
 
 export function NavItem({
@@ -19,6 +21,7 @@ export function NavItem({
   active = false,
   disabled = false,
   href,
+  trailing,
 }: {
   label: string;
   icon: keyof typeof ICONS | string;
@@ -26,6 +29,7 @@ export function NavItem({
   active?: boolean;
   disabled?: boolean;
   href?: string;
+  trailing?: React.ReactNode;
 }) {
   const Icon = ICONS[icon] ?? Users;
   const inner = (
@@ -33,6 +37,7 @@ export function NavItem({
       <Icon size={16} className="shrink-0" />
       <span className="flex-1">{label}</span>
       {count != null && <span className="tabular text-ink-3 text-xs">{count}</span>}
+      {trailing}
     </>
   );
 

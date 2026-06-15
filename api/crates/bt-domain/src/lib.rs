@@ -33,6 +33,29 @@ pub struct LoginRequest {
     pub password: String,
 }
 
+/// Workspace-global capabilities. Lead↔member data access stays ownership-based
+/// (`require_member_access`) and is NOT modeled as a permission.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum Permission {
+    ManageTeam,       // 5a: lead workspace UI (Команда/Календарь/профили)
+    ApproveReviews,   // 5a: pending queue, approve/reject
+    EditFramework,    // 5b: matrix/levels/discipline editor
+    EditSalaryBands,  // 5b: exact band numbers
+}
+
+pub fn permissions_of(role: &str) -> &'static [Permission] {
+    match role {
+        "lead" => &[Permission::ManageTeam],
+        "hr_admin" => &[
+            Permission::ApproveReviews,
+            Permission::EditFramework,
+            Permission::EditSalaryBands,
+        ],
+        _ => &[],
+    }
+}
+
 /// Public user shape returned to the client.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema, PartialEq)]
 pub struct UserDto {
@@ -40,6 +63,7 @@ pub struct UserDto {
     pub name: String,
     pub email: String,
     pub role: String,
+    pub permissions: Vec<Permission>,
 }
 
 /// Successful login payload.
@@ -56,6 +80,7 @@ pub struct MeResponse {
     pub name: String,
     pub email: String,
     pub role: String,
+    pub permissions: Vec<Permission>,
     pub team_id: Option<uuid::Uuid>,
 }
 
@@ -424,6 +449,8 @@ pub struct Review {
     pub summary: String,
     pub created_at: String,
     pub finalized_at: Option<String>,
+    pub hr_comment: String,
+    pub resolved_at: Option<String>,
     pub scores: Vec<ReviewScore>,
 }
 
@@ -438,6 +465,21 @@ pub struct UpdateReview {
     pub scores: Option<Vec<UpdateReviewScore>>,
     pub decision: Option<String>,
     pub summary: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct PendingReview {
+    pub review: Review,
+    pub member_id: uuid::Uuid,
+    pub member_name: String,
+    pub member_hue: i32,
+    pub team_name: String,
+    pub discipline_label: String,
+}
+
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct RejectReview {
+    pub comment: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -459,5 +501,22 @@ mod tests {
         let json = serde_json::to_value(Health::ok()).unwrap();
         assert_eq!(json["status"], "ok");
         assert!(json["version"].is_string());
+    }
+
+    #[test]
+    fn permissions_matrix() {
+        assert_eq!(permissions_of("lead"), &[Permission::ManageTeam]);
+        assert!(permissions_of("hr_admin").contains(&Permission::ApproveReviews));
+        assert!(permissions_of("hr_admin").contains(&Permission::EditFramework));
+        assert!(permissions_of("hr_admin").contains(&Permission::EditSalaryBands));
+        assert!(!permissions_of("hr_admin").contains(&Permission::ManageTeam));
+        assert!(permissions_of("employee").is_empty());
+        assert!(permissions_of("garbage").is_empty());
+    }
+
+    #[test]
+    fn permission_serializes_snake_case() {
+        assert_eq!(serde_json::to_value(Permission::ApproveReviews).unwrap(), "approve_reviews");
+        assert_eq!(serde_json::to_value(Permission::ManageTeam).unwrap(), "manage_team");
     }
 }
