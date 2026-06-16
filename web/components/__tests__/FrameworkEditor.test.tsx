@@ -85,3 +85,22 @@ describe("MatrixEditor", () => {
     expect(onOpenCell).toHaveBeenCalledWith(0, 1);
   });
 });
+
+import { NewDisciplineModal } from "../grades/NewDisciplineModal";
+
+describe("NewDisciplineModal", () => {
+  const bases = [{ id: "d1", label: "Backend" }, { id: "d2", label: "Frontend" }];
+
+  it("disables create until a label is entered", () => {
+    const onCreate = vi.fn();
+    render(<NewDisciplineModal bases={bases} onCreate={onCreate} onClose={() => {}} creating={false} />);
+    const btn = screen.getByRole("button", { name: "Создать" });
+    expect(btn).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("Название дисциплины"), { target: { value: "Дизайн" } });
+    expect(btn).toBeEnabled();
+    fireEvent.click(btn);
+    expect(onCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ label: "Дизайн", copy_from_discipline_id: "d1" }),
+    );
+  });
+});
