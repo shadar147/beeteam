@@ -36,6 +36,7 @@ use utoipa::OpenApi;
         crate::routes::grades::get_framework,
         crate::routes::grades::update_levels,
         crate::routes::grades::put_discipline,
+        crate::routes::grades::create_discipline,
         crate::routes::evidence::create_evidence,
         crate::routes::evidence::delete_evidence,
         crate::routes::evidence::list_member_evidence,

@@ -3,9 +3,10 @@ use crate::auth::permissions::require_permission;
 use crate::error::{AppError, AppResult};
 use crate::app::AppState;
 use axum::extract::State;
+use axum::http::StatusCode;
 use axum::Json;
 use axum::extract::Path;
-use bt_domain::{Discipline, GradeBlock, GradeLevel, GradesFramework, MatrixCell, Permission, PutDiscipline, UpdateLevels};
+use bt_domain::{CreateDiscipline, Discipline, GradeBlock, GradeLevel, GradesFramework, MatrixCell, Permission, PutDiscipline, UpdateLevels};
 use std::collections::HashSet;
 use uuid::Uuid;
 
@@ -229,6 +230,59 @@ pub async fn put_discipline(
     Ok(Json(load_discipline(&state.pool, id).await?))
 }
 
+#[utoipa::path(
+    post, path = "/v1/grades/disciplines", request_body = CreateDiscipline,
+    responses((status = 201, body = Discipline), (status = 400), (status = 403), (status = 404))
+)]
+pub async fn create_discipline(
+    State(state): State<AppState>,
+    axum::Extension(auth): axum::Extension<AuthUser>,
+    Json(body): Json<CreateDiscipline>,
+) -> AppResult<(StatusCode, Json<Discipline>)> {
+    require_permission(&auth, Permission::EditFramework)?;
+    if body.label.trim().is_empty() {
+        return Err(AppError::BadRequest("discipline label must not be empty".into()));
+    }
+    let workspace_id = workspace_of(&state.pool, auth.id).await?;
+
+    let src: Option<(Uuid,)> = sqlx::query_as(
+        "SELECT id FROM disciplines WHERE id = $1 AND workspace_id = $2",
+    ).bind(body.copy_from_discipline_id).bind(workspace_id).fetch_optional(&state.pool).await?;
+    if src.is_none() {
+        return Err(AppError::NotFound);
+    }
+    let src_blocks: Vec<(String, i32)> = sqlx::query_as(
+        "SELECT name, ord FROM grade_blocks WHERE discipline_id = $1 ORDER BY ord",
+    ).bind(body.copy_from_discipline_id).fetch_all(&state.pool).await?;
+
+    let mut tx = state.pool.begin().await?;
+    let next_ord: (Option<i32>,) = sqlx::query_as(
+        "SELECT max(ord) FROM disciplines WHERE workspace_id = $1",
+    ).bind(workspace_id).fetch_one(&mut *tx).await?;
+    let ord = next_ord.0.unwrap_or(-1) + 1;
+    let disc_key = format!("disc_{}", &Uuid::new_v4().simple().to_string()[..8]);
+    let drow: (Uuid,) = sqlx::query_as(
+        "INSERT INTO disciplines (workspace_id, key, label, icon, description, ord) \
+         VALUES ($1, $2, $3, $4, $5, $6) RETURNING id",
+    ).bind(workspace_id).bind(&disc_key).bind(&body.label).bind(&body.icon).bind(&body.description).bind(ord)
+    .fetch_one(&mut *tx).await?;
+
+    for (i, (name, _)) in src_blocks.iter().enumerate() {
+        let block_key = format!("blk_{}", &Uuid::new_v4().simple().to_string()[..8]);
+        let brow: (Uuid,) = sqlx::query_as(
+            "INSERT INTO grade_blocks (discipline_id, key, name, ord) VALUES ($1, $2, $3, $4) RETURNING id",
+        ).bind(drow.0).bind(&block_key).bind(name).bind(i as i32).fetch_one(&mut *tx).await?;
+        for lvl in 1..=7i32 {
+            sqlx::query(
+                "INSERT INTO matrix_cells (block_id, level_ord, text, required) VALUES ($1, $2, NULL, true)",
+            ).bind(brow.0).bind(lvl).execute(&mut *tx).await?;
+        }
+    }
+    tx.commit().await?;
+
+    Ok((StatusCode::CREATED, Json(load_discipline(&state.pool, drow.0).await?)))
+}
+
 #[cfg(test)]
 mod tests {
     use crate::app::{build_router, AppState};
@@ -398,6 +452,62 @@ mod tests {
         let (id, _) = disc_blocks(&pool, "qa").await;
         let (status, _) = put_disc(&pool, &lead, &id.to_string(),
             r#"{"label":"QA","icon":"check","description":"","blocks":[]}"#).await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+    }
+
+    async fn post_disc(pool: &sqlx::PgPool, token: &str, body: &str) -> (StatusCode, serde_json::Value) {
+        let resp = app(pool.clone()).oneshot(
+            Request::builder().method("POST").uri("/v1/grades/disciplines")
+                .header("authorization", format!("Bearer {token}"))
+                .header("content-type", "application/json")
+                .body(Body::from(body.to_string())).unwrap(),
+        ).await.unwrap();
+        let status = resp.status();
+        let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+        let json = if bytes.is_empty() { serde_json::Value::Null } else { serde_json::from_slice(&bytes).unwrap() };
+        (status, json)
+    }
+
+    #[sqlx::test(migrations = "../bt-db/migrations")]
+    async fn post_creates_discipline_copying_structure_with_empty_cells(pool: sqlx::PgPool) {
+        bt_db::seed::seed_demo(&pool).await.unwrap();
+        let hr = login_token(&pool, "o.klimova@beeteam.io").await;
+        let (backend_id, backend_blocks) = disc_blocks(&pool, "backend").await;
+        let body = format!(
+            r#"{{"label":"Дизайн","icon":"spark","description":"Продуктовый дизайн","copy_from_discipline_id":"{backend_id}"}}"#
+        );
+        let (status, json) = post_disc(&pool, &hr, &body).await;
+        assert_eq!(status, StatusCode::CREATED);
+        assert_eq!(json["label"], "Дизайн");
+        let blocks = json["blocks"].as_array().unwrap();
+        assert_eq!(blocks.len(), backend_blocks.len(), "block structure copied");
+        // cells are empty (required=true, text null) → 7 per block
+        let b0 = &blocks[0];
+        assert_eq!(b0["cells"].as_array().unwrap().len(), 7);
+        assert!(b0["cells"][0]["text"].is_null());
+        assert_eq!(b0["cells"][0]["required"], true);
+        assert!(b0["key"].as_str().unwrap().starts_with("blk_"));
+    }
+
+    #[sqlx::test(migrations = "../bt-db/migrations")]
+    async fn post_404_for_unknown_copy_from(pool: sqlx::PgPool) {
+        bt_db::seed::seed_demo(&pool).await.unwrap();
+        let hr = login_token(&pool, "o.klimova@beeteam.io").await;
+        let body = format!(
+            r#"{{"label":"X","icon":"layers","description":"","copy_from_discipline_id":"{}"}}"#,
+            uuid::Uuid::new_v4()
+        );
+        let (status, _) = post_disc(&pool, &hr, &body).await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+    }
+
+    #[sqlx::test(migrations = "../bt-db/migrations")]
+    async fn post_forbidden_for_lead(pool: sqlx::PgPool) {
+        bt_db::seed::seed_demo(&pool).await.unwrap();
+        let lead = login_token(&pool, "e.glebov@beeteam.io").await;
+        let (backend_id, _) = disc_blocks(&pool, "backend").await;
+        let body = format!(r#"{{"label":"X","icon":"layers","description":"","copy_from_discipline_id":"{backend_id}"}}"#);
+        let (status, _) = post_disc(&pool, &lead, &body).await;
         assert_eq!(status, StatusCode::FORBIDDEN);
     }
 
