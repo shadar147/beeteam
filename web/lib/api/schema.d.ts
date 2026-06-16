@@ -212,6 +212,38 @@ export interface paths {
         patch: operations["update_goal"];
         trace?: never;
     };
+    "/v1/grades/disciplines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["create_discipline"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/grades/disciplines/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["put_discipline"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/grades/framework": {
         parameters: {
             query?: never;
@@ -226,6 +258,22 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/v1/grades/levels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["update_levels"];
         trace?: never;
     };
     "/v1/health": {
@@ -639,6 +687,13 @@ export interface components {
             status: string;
             title: string;
         };
+        CreateDiscipline: {
+            /** Format: uuid */
+            copy_from_discipline_id: string;
+            description: string;
+            icon: string;
+            label: string;
+        };
         CreateEvidence: {
             /** Format: uuid */
             block_id: string;
@@ -935,6 +990,24 @@ export interface components {
          * @enum {string}
          */
         Permission: "manage_team" | "approve_reviews" | "edit_framework" | "edit_salary_bands";
+        PutBlock: {
+            cells: components["schemas"]["PutCell"][];
+            /** Format: uuid */
+            id?: string | null;
+            name: string;
+        };
+        PutCell: {
+            /** Format: int32 */
+            level_ord: number;
+            required: boolean;
+            text?: string | null;
+        };
+        PutDiscipline: {
+            blocks: components["schemas"]["PutBlock"][];
+            description: string;
+            icon: string;
+            label: string;
+        };
         RejectReview: {
             comment: string;
         };
@@ -1006,6 +1079,17 @@ export interface components {
             quarter?: string | null;
             status?: string | null;
             title?: string | null;
+        };
+        UpdateLevel: {
+            autonomy: string;
+            exp: string;
+            name: string;
+            /** Format: int32 */
+            ord: number;
+            scope: string;
+        };
+        UpdateLevels: {
+            levels: components["schemas"]["UpdateLevel"][];
         };
         /** @description Autosave patch — every field optional; provided fields are written. */
         UpdateMeetingRequest: {
@@ -1605,6 +1689,98 @@ export interface operations {
             };
         };
     };
+    create_discipline: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateDiscipline"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Discipline"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    put_discipline: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Discipline id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PutDiscipline"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Discipline"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description A removed block still has data */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     get_framework: {
         parameters: {
             query?: never;
@@ -1622,6 +1798,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["GradesFramework"];
                 };
+            };
+        };
+    };
+    update_levels: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateLevels"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GradeLevel"][];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
