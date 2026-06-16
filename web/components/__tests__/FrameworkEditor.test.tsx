@@ -38,3 +38,50 @@ describe("LevelsEditor", () => {
     expect(onChange).toHaveBeenCalledWith(1, { name: "Стажёр" });
   });
 });
+
+import { MatrixEditor } from "../grades/MatrixEditor";
+import { emptyCells, type DraftBlock } from "../grades/editorTypes";
+
+const BLOCKS: DraftBlock[] = [
+  { id: "b1", key: "stack", name: "Стек", cells: emptyCells() },
+  { id: "b2", key: "core", name: "Ядро", cells: emptyCells() },
+];
+const COLS = LEVELS; // reuse the 2-level fixture from Task 7's describe scope
+
+describe("MatrixEditor", () => {
+  it("renames a block", () => {
+    const onRename = vi.fn();
+    render(<MatrixEditor blocks={BLOCKS} levels={COLS} onRename={onRename}
+      onMove={() => {}} onDelete={() => {}} onAdd={() => {}} onOpenCell={() => {}} />);
+    fireEvent.change(screen.getAllByLabelText("Имя блока")[0], { target: { value: "Стек+" } });
+    expect(onRename).toHaveBeenCalledWith(0, "Стек+");
+  });
+
+  it("adds a block", () => {
+    const onAdd = vi.fn();
+    render(<MatrixEditor blocks={BLOCKS} levels={COLS} onRename={() => {}}
+      onMove={() => {}} onDelete={() => {}} onAdd={onAdd} onOpenCell={() => {}} />);
+    fireEvent.click(screen.getByRole("button", { name: /Добавить блок/i }));
+    expect(onAdd).toHaveBeenCalled();
+  });
+
+  it("moves and deletes blocks; up disabled at the top", () => {
+    const onMove = vi.fn();
+    const onDelete = vi.fn();
+    render(<MatrixEditor blocks={BLOCKS} levels={COLS} onRename={() => {}}
+      onMove={onMove} onDelete={onDelete} onAdd={() => {}} onOpenCell={() => {}} />);
+    expect(screen.getAllByRole("button", { name: "Блок вверх" })[0]).toBeDisabled();
+    fireEvent.click(screen.getAllByRole("button", { name: "Блок вниз" })[0]);
+    expect(onMove).toHaveBeenCalledWith(0, 1);
+    fireEvent.click(screen.getAllByRole("button", { name: "Удалить блок" })[1]);
+    expect(onDelete).toHaveBeenCalledWith(1);
+  });
+
+  it("opens a cell editor on cell click", () => {
+    const onOpenCell = vi.fn();
+    render(<MatrixEditor blocks={BLOCKS} levels={COLS} onRename={() => {}}
+      onMove={() => {}} onDelete={() => {}} onAdd={() => {}} onOpenCell={onOpenCell} />);
+    fireEvent.click(screen.getAllByTestId("edit-cell-b1-1")[0]);
+    expect(onOpenCell).toHaveBeenCalledWith(0, 1);
+  });
+});
