@@ -3,6 +3,24 @@ import { describe, it, expect, vi } from "vitest";
 import { CellEditor } from "../grades/CellEditor";
 import { LevelsEditor } from "../grades/LevelsEditor";
 import type { DraftLevel } from "../grades/editorTypes";
+import { GradesClient } from "../grades/GradesClient";
+
+vi.mock("@/lib/query/grades", async (orig) => {
+  const actual = await orig<typeof import("@/lib/query/grades")>();
+  return {
+    ...actual,
+    useGradesFramework: () => ({
+      isLoading: false, isError: false,
+      data: {
+        levels: [{ ord: 1, code: "IC1", name: "Junior", exp: "", autonomy: "", scope: "", mgr: false, band_low: 1, band_mid: 2, band_high: 3 }],
+        disciplines: [{ id: "d1", key: "backend", label: "Backend", icon: "fields", description: "", ord: 0, blocks: [] }],
+      },
+    }),
+    useUpdateLevels: () => ({ mutateAsync: vi.fn(), isPending: false }),
+    usePutDiscipline: () => ({ mutateAsync: vi.fn(), isPending: false }),
+    useCreateDiscipline: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  };
+});
 
 describe("CellEditor", () => {
   it("applies edited text", () => {
@@ -102,5 +120,21 @@ describe("NewDisciplineModal", () => {
     expect(onCreate).toHaveBeenCalledWith(
       expect.objectContaining({ label: "Дизайн", copy_from_discipline_id: "d1" }),
     );
+  });
+});
+
+describe("GradesClient edit gating", () => {
+  it("shows «Редактировать» only when canEdit", () => {
+    const { rerender } = render(<GradesClient canEdit={false} />);
+    expect(screen.queryByRole("button", { name: "Редактировать" })).not.toBeInTheDocument();
+    rerender(<GradesClient canEdit={true} />);
+    expect(screen.getByRole("button", { name: "Редактировать" })).toBeInTheDocument();
+  });
+
+  it("enters edit mode and hides the Вилки tab", () => {
+    render(<GradesClient canEdit={true} />);
+    fireEvent.click(screen.getByRole("button", { name: "Редактировать" }));
+    expect(screen.getByText("режим редактирования")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Вилки" })).not.toBeInTheDocument();
   });
 });
