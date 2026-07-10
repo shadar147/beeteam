@@ -34,6 +34,9 @@ use utoipa::OpenApi;
         crate::routes::files::download_files_zip,
         crate::routes::teams::team_calendar,
         crate::routes::grades::get_framework,
+        crate::routes::grades::update_levels,
+        crate::routes::grades::put_discipline,
+        crate::routes::grades::create_discipline,
         crate::routes::evidence::create_evidence,
         crate::routes::evidence::delete_evidence,
         crate::routes::evidence::list_member_evidence,
@@ -94,6 +97,12 @@ use utoipa::OpenApi;
         bt_domain::Permission,
         bt_domain::PendingReview,
         bt_domain::RejectReview,
+        bt_domain::UpdateLevels,
+        bt_domain::UpdateLevel,
+        bt_domain::PutDiscipline,
+        bt_domain::PutBlock,
+        bt_domain::PutCell,
+        bt_domain::CreateDiscipline,
     )),
     info(title = "BeeTeam API", version = "0.1.0")
 )]
