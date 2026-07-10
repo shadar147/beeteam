@@ -516,6 +516,20 @@ pub struct UpdateLevels {
 }
 
 #[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct UpdateBand {
+    pub ord: i32,
+    pub band_low: f64,
+    pub band_mid: f64,
+    pub band_high: f64,
+}
+
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct UpdateBands {
+    pub tax_rate: f64,
+    pub levels: Vec<UpdateBand>,
+}
+
+#[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct PutCell {
     pub level_ord: i32,
     pub text: Option<String>,

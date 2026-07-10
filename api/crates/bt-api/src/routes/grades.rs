@@ -6,7 +6,7 @@ use axum::extract::State;
 use axum::http::StatusCode;
 use axum::Json;
 use axum::extract::Path;
-use bt_domain::{BandShape, CreateDiscipline, Discipline, GradeBlock, GradeLevel, GradesFramework, MatrixCell, Permission, PutDiscipline, UpdateLevels};
+use bt_domain::{BandShape, CreateDiscipline, Discipline, GradeBlock, GradeLevel, GradesFramework, MatrixCell, Permission, PutDiscipline, UpdateBands, UpdateLevels};
 use std::collections::HashSet;
 use uuid::Uuid;
 
@@ -294,6 +294,46 @@ pub async fn create_discipline(
     tx.commit().await?;
 
     Ok((StatusCode::CREATED, Json(load_discipline(&state.pool, drow.0).await?)))
+}
+
+#[utoipa::path(
+    patch, path = "/v1/grades/bands", request_body = UpdateBands,
+    responses((status = 200, body = [GradeLevel]), (status = 400), (status = 403))
+)]
+pub async fn update_bands(
+    State(state): State<AppState>,
+    axum::Extension(auth): axum::Extension<AuthUser>,
+    Json(body): Json<UpdateBands>,
+) -> AppResult<Json<Vec<GradeLevel>>> {
+    require_permission(&auth, Permission::EditSalaryBands)?;
+    // App clamps the rate to [0, 0.99]; the DB CHECK (`< 1.0`) is a looser backstop that
+    // just guarantees net pay stays positive.
+    if !(0.0..=0.99).contains(&body.tax_rate) {
+        return Err(AppError::BadRequest("tax_rate must be in [0, 0.99]".into()));
+    }
+    for l in &body.levels {
+        // Reject unless 0 < low <= mid <= high (equal bands = a flat/fixed salary are allowed).
+        if l.band_low <= 0.0 || l.band_low > l.band_mid || l.band_mid > l.band_high {
+            return Err(AppError::BadRequest("band must satisfy 0 < low <= mid <= high".into()));
+        }
+    }
+    let workspace_id = workspace_of(&state.pool, auth.id).await?;
+
+    let mut tx = state.pool.begin().await?;
+    for l in &body.levels {
+        sqlx::query(
+            "UPDATE grade_levels SET band_low = $3, band_mid = $4, band_high = $5 \
+             WHERE ord = $2 AND workspace_id = $1",
+        )
+        .bind(workspace_id).bind(l.ord).bind(l.band_low).bind(l.band_mid).bind(l.band_high)
+        .execute(&mut *tx).await?;
+    }
+    sqlx::query("UPDATE workspaces SET salary_tax_rate = $2 WHERE id = $1")
+        .bind(workspace_id).bind(body.tax_rate).execute(&mut *tx).await?;
+    tx.commit().await?;
+
+    // The caller passed require_permission(EditSalaryBands) above, so exact bands are OK to return.
+    Ok(Json(levels_of(&state.pool, workspace_id, true).await?))
 }
 
 #[cfg(test)]
@@ -617,5 +657,67 @@ mod tests {
         let res2 = sqlx::query("UPDATE grade_levels SET band_mid = band_high + 1 WHERE ord = 1")
             .execute(&pool).await;
         assert!(res2.is_err(), "CHECK band_order must reject mid > high");
+    }
+
+    async fn patch_bands(pool: &sqlx::PgPool, token: &str, body: &str) -> StatusCode {
+        app(pool.clone()).oneshot(
+            Request::builder().method("PATCH").uri("/v1/grades/bands")
+                .header("authorization", format!("Bearer {token}"))
+                .header("content-type", "application/json")
+                .body(Body::from(body.to_string())).unwrap(),
+        ).await.unwrap().status()
+    }
+
+    #[sqlx::test(migrations = "../bt-db/migrations")]
+    async fn patch_bands_updates_numbers_and_tax(pool: sqlx::PgPool) {
+        bt_db::seed::seed_demo(&pool).await.unwrap();
+        let hr = login_token(&pool, "o.klimova@beeteam.io").await;
+        let status = patch_bands(&pool, &hr,
+            r#"{"tax_rate":0.12,"levels":[{"ord":1,"band_low":320000,"band_mid":400000,"band_high":500000}]}"#).await;
+        assert_eq!(status, StatusCode::OK);
+
+        let ws = "(SELECT workspace_id FROM users WHERE email='o.klimova@beeteam.io')";
+        let row: (String, f64) = sqlx::query_as(&format!(
+            "SELECT name, band_mid FROM grade_levels WHERE ord = 1 AND workspace_id = {ws}"))
+            .fetch_one(&pool).await.unwrap();
+        assert_eq!(row.0, "Trainee", "text columns untouched");
+        assert_eq!(row.1, 400000.0);
+        let tax: (f64,) = sqlx::query_as(&format!(
+            "SELECT salary_tax_rate FROM workspaces WHERE id = {ws}"))
+            .fetch_one(&pool).await.unwrap();
+        assert!((tax.0 - 0.12).abs() < 1e-9);
+    }
+
+    #[sqlx::test(migrations = "../bt-db/migrations")]
+    async fn patch_bands_rejects_invalid(pool: sqlx::PgPool) {
+        bt_db::seed::seed_demo(&pool).await.unwrap();
+        let hr = login_token(&pool, "o.klimova@beeteam.io").await;
+        let s1 = patch_bands(&pool, &hr,
+            r#"{"tax_rate":0.1,"levels":[{"ord":1,"band_low":500000,"band_mid":400000,"band_high":600000}]}"#).await;
+        assert_eq!(s1, StatusCode::BAD_REQUEST);
+        let s2 = patch_bands(&pool, &hr, r#"{"tax_rate":1.5,"levels":[]}"#).await;
+        assert_eq!(s2, StatusCode::BAD_REQUEST);
+    }
+
+    #[sqlx::test(migrations = "../bt-db/migrations")]
+    async fn patch_bands_forbidden_for_lead(pool: sqlx::PgPool) {
+        bt_db::seed::seed_demo(&pool).await.unwrap();
+        let lead = login_token(&pool, "e.glebov@beeteam.io").await;
+        let status = patch_bands(&pool, &lead,
+            r#"{"tax_rate":0.1,"levels":[{"ord":1,"band_low":320000,"band_mid":400000,"band_high":500000}]}"#).await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+    }
+
+    #[sqlx::test(migrations = "../bt-db/migrations")]
+    async fn patch_bands_tax_only_succeeds(pool: sqlx::PgPool) {
+        bt_db::seed::seed_demo(&pool).await.unwrap();
+        let hr = login_token(&pool, "o.klimova@beeteam.io").await;
+        let status = patch_bands(&pool, &hr, r#"{"tax_rate":0.15,"levels":[]}"#).await;
+        assert_eq!(status, StatusCode::OK);
+        let tax: (f64,) = sqlx::query_as(
+            "SELECT salary_tax_rate FROM workspaces WHERE id = \
+             (SELECT workspace_id FROM users WHERE email='o.klimova@beeteam.io')")
+            .fetch_one(&pool).await.unwrap();
+        assert!((tax.0 - 0.15).abs() < 1e-9);
     }
 }
