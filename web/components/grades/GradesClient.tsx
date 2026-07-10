@@ -251,7 +251,7 @@ export function GradesClient({ canEdit }: { canEdit: boolean }) {
       ) : tab === "levels" ? (
         <GradeLevels levels={levels} />
       ) : tab === "bands" ? (
-        <GradeBands levels={levels} />
+        <GradeBands levels={levels} taxRate={fw.data!.tax_rate} />
       ) : (
         <GradeMatrix discipline={active} levels={levels} />
       )}

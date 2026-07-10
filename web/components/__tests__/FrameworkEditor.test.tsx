@@ -12,13 +12,15 @@ vi.mock("@/lib/query/grades", async (orig) => {
     useGradesFramework: () => ({
       isLoading: false, isError: false,
       data: {
-        levels: [{ ord: 1, code: "IC1", name: "Junior", exp: "", autonomy: "", scope: "", mgr: false, band_low: 1, band_mid: 2, band_high: 3 }],
+        levels: [{ ord: 1, code: "IC1", name: "Junior", exp: "", autonomy: "", scope: "", mgr: false, band_shape: { low: 0.33, mid: 0.66, high: 1 }, band_low: null, band_mid: null, band_high: null }],
         disciplines: [{ id: "d1", key: "backend", label: "Backend", icon: "fields", description: "", ord: 0, blocks: [] }],
+        tax_rate: 0.1,
       },
     }),
     useUpdateLevels: () => ({ mutateAsync: vi.fn(), isPending: false }),
     usePutDiscipline: () => ({ mutateAsync: vi.fn(), isPending: false }),
     useCreateDiscipline: () => ({ mutateAsync: vi.fn(), isPending: false }),
+    useUpdateBands: () => ({ mutateAsync: vi.fn(), isPending: false }),
   };
 });
 
