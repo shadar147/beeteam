@@ -81,6 +81,7 @@ use utoipa::OpenApi;
         bt_domain::TemplateDetail,
         bt_domain::CalendarMeeting,
         bt_domain::GradeLevel,
+        bt_domain::BandShape,
         bt_domain::MatrixCell,
         bt_domain::GradeBlock,
         bt_domain::Discipline,
