@@ -1,12 +1,12 @@
 use crate::auth::middleware::AuthUser;
-use crate::auth::permissions::require_permission;
+use crate::auth::permissions::{has_permission, require_permission};
 use crate::error::{AppError, AppResult};
 use crate::app::AppState;
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::Json;
 use axum::extract::Path;
-use bt_domain::{CreateDiscipline, Discipline, GradeBlock, GradeLevel, GradesFramework, MatrixCell, Permission, PutDiscipline, UpdateLevels};
+use bt_domain::{BandShape, CreateDiscipline, Discipline, GradeBlock, GradeLevel, GradesFramework, MatrixCell, Permission, PutDiscipline, UpdateBands, UpdateLevels};
 use std::collections::HashSet;
 use uuid::Uuid;
 
@@ -16,15 +16,19 @@ pub(crate) async fn workspace_of(pool: &sqlx::PgPool, user_id: Uuid) -> AppResul
     Ok(ws.ok_or(AppError::Unauthorized)?.0)
 }
 
-pub(crate) async fn levels_of(pool: &sqlx::PgPool, workspace_id: Uuid) -> AppResult<Vec<GradeLevel>> {
+pub(crate) async fn levels_of(pool: &sqlx::PgPool, workspace_id: Uuid, show_bands: bool) -> AppResult<Vec<GradeLevel>> {
     let rows = sqlx::query_as::<_, (i32, String, String, String, String, String, bool, f64, f64, f64)>(
         "SELECT ord, code, name, exp, autonomy, scope, mgr, band_low, band_mid, band_high \
          FROM grade_levels WHERE workspace_id = $1 ORDER BY ord",
     )
     .bind(workspace_id).fetch_all(pool).await?;
+    let global_max = rows.iter().map(|r| r.9).fold(1.0_f64, f64::max);
     Ok(rows.into_iter().map(|r| GradeLevel {
-        ord: r.0, code: r.1, name: r.2, exp: r.3, autonomy: r.4, scope: r.5,
-        mgr: r.6, band_low: r.7, band_mid: r.8, band_high: r.9,
+        ord: r.0, code: r.1, name: r.2, exp: r.3, autonomy: r.4, scope: r.5, mgr: r.6,
+        band_shape: BandShape { low: r.7 / global_max, mid: r.8 / global_max, high: r.9 / global_max },
+        band_low: if show_bands { Some(r.7) } else { None },
+        band_mid: if show_bands { Some(r.8) } else { None },
+        band_high: if show_bands { Some(r.9) } else { None },
     }).collect())
 }
 
@@ -58,7 +62,8 @@ pub async fn get_framework(
 ) -> AppResult<Json<GradesFramework>> {
     let workspace_id = workspace_of(&state.pool, auth.id).await?;
 
-    let levels = levels_of(&state.pool, workspace_id).await?;
+    let show_bands = has_permission(&auth, Permission::EditSalaryBands);
+    let levels = levels_of(&state.pool, workspace_id, show_bands).await?;
 
     let disc_rows: Vec<(Uuid, String, String, String, String, i32)> = sqlx::query_as(
         "SELECT id, key, label, icon, description, ord FROM disciplines \
@@ -94,7 +99,15 @@ pub async fn get_framework(
         Discipline { id: d.0, key: d.1, label: d.2, icon: d.3, description: d.4, ord: d.5, blocks }
     }).collect();
 
-    Ok(Json(GradesFramework { levels, disciplines }))
+    let tax_rate = if show_bands {
+        let r: (f64,) = sqlx::query_as("SELECT salary_tax_rate FROM workspaces WHERE id = $1")
+            .bind(workspace_id).fetch_one(&state.pool).await?;
+        Some(r.0)
+    } else {
+        None
+    };
+
+    Ok(Json(GradesFramework { levels, disciplines, tax_rate }))
 }
 
 #[utoipa::path(
@@ -123,7 +136,7 @@ pub async fn update_levels(
     }
     tx.commit().await?;
 
-    Ok(Json(levels_of(&state.pool, workspace_id).await?))
+    Ok(Json(levels_of(&state.pool, workspace_id, has_permission(&auth, Permission::EditSalaryBands)).await?))
 }
 
 #[utoipa::path(
@@ -283,6 +296,46 @@ pub async fn create_discipline(
     Ok((StatusCode::CREATED, Json(load_discipline(&state.pool, drow.0).await?)))
 }
 
+#[utoipa::path(
+    patch, path = "/v1/grades/bands", request_body = UpdateBands,
+    responses((status = 200, body = [GradeLevel]), (status = 400), (status = 403))
+)]
+pub async fn update_bands(
+    State(state): State<AppState>,
+    axum::Extension(auth): axum::Extension<AuthUser>,
+    Json(body): Json<UpdateBands>,
+) -> AppResult<Json<Vec<GradeLevel>>> {
+    require_permission(&auth, Permission::EditSalaryBands)?;
+    // App clamps the rate to [0, 0.99]; the DB CHECK (`< 1.0`) is a looser backstop that
+    // just guarantees net pay stays positive.
+    if !(0.0..=0.99).contains(&body.tax_rate) {
+        return Err(AppError::BadRequest("tax_rate must be in [0, 0.99]".into()));
+    }
+    for l in &body.levels {
+        // Reject unless 0 < low <= mid <= high (equal bands = a flat/fixed salary are allowed).
+        if l.band_low <= 0.0 || l.band_low > l.band_mid || l.band_mid > l.band_high {
+            return Err(AppError::BadRequest("band must satisfy 0 < low <= mid <= high".into()));
+        }
+    }
+    let workspace_id = workspace_of(&state.pool, auth.id).await?;
+
+    let mut tx = state.pool.begin().await?;
+    for l in &body.levels {
+        sqlx::query(
+            "UPDATE grade_levels SET band_low = $3, band_mid = $4, band_high = $5 \
+             WHERE ord = $2 AND workspace_id = $1",
+        )
+        .bind(workspace_id).bind(l.ord).bind(l.band_low).bind(l.band_mid).bind(l.band_high)
+        .execute(&mut *tx).await?;
+    }
+    sqlx::query("UPDATE workspaces SET salary_tax_rate = $2 WHERE id = $1")
+        .bind(workspace_id).bind(body.tax_rate).execute(&mut *tx).await?;
+    tx.commit().await?;
+
+    // The caller passed require_permission(EditSalaryBands) above, so exact bands are OK to return.
+    Ok(Json(levels_of(&state.pool, workspace_id, true).await?))
+}
+
 #[cfg(test)]
 mod tests {
     use crate::app::{build_router, AppState};
@@ -310,6 +363,16 @@ mod tests {
         ).await.unwrap();
         let bytes = resp.into_body().collect().await.unwrap().to_bytes();
         serde_json::from_slice::<serde_json::Value>(&bytes).unwrap()["token"].as_str().unwrap().to_string()
+    }
+
+    async fn get_framework_json(pool: &sqlx::PgPool, token: &str) -> serde_json::Value {
+        let resp = app(pool.clone()).oneshot(
+            Request::builder().method("GET").uri("/v1/grades/framework")
+                .header("authorization", format!("Bearer {token}"))
+                .body(Body::empty()).unwrap(),
+        ).await.unwrap();
+        let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+        serde_json::from_slice(&bytes).unwrap()
     }
 
     async fn patch_levels(pool: &sqlx::PgPool, token: &str, body: &str) -> StatusCode {
@@ -525,7 +588,9 @@ mod tests {
         let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(json["levels"].as_array().unwrap().len(), 7);
         assert_eq!(json["levels"][0]["code"], "IC1");
-        assert!(json["levels"][0]["band_mid"].is_number());
+        assert!(json["levels"][0]["band_mid"].is_null(), "lead: exact bands masked");
+        assert!(json["levels"][0]["band_shape"]["high"].is_number());
+        assert!(json["tax_rate"].is_null(), "lead: tax rate masked");
         let disc = json["disciplines"].as_array().unwrap();
         assert_eq!(disc.len(), 5);
         let backend = disc.iter().find(|d| d["key"] == "backend").unwrap();
@@ -535,5 +600,124 @@ mod tests {
         // arch/IC1 is "Не требуется." → required=false, text null
         assert_eq!(arch["cells"][0]["required"], false);
         assert!(arch["cells"][0]["text"].is_null());
+    }
+
+    #[sqlx::test(migrations = "../bt-db/migrations")]
+    async fn seed_bands_are_gross_tenge(pool: sqlx::PgPool) {
+        bt_db::seed::seed_demo(&pool).await.unwrap();
+        let row: (f64, f64) = sqlx::query_as(
+            "SELECT band_mid, band_high FROM grade_levels WHERE ord = 7 \
+             AND workspace_id = (SELECT id FROM workspaces LIMIT 1)",
+        ).fetch_one(&pool).await.unwrap();
+        assert_eq!(row.0, 3_700_000.0);
+        assert_eq!(row.1, 4_600_000.0);
+
+        let ic1: (f64, f64) = sqlx::query_as(
+            "SELECT band_low, band_mid FROM grade_levels WHERE ord = 1 \
+             AND workspace_id = (SELECT id FROM workspaces LIMIT 1)",
+        ).fetch_one(&pool).await.unwrap();
+        assert_eq!(ic1.0, 300_000.0);
+        assert_eq!(ic1.1, 380_000.0);
+    }
+
+    #[sqlx::test(migrations = "../bt-db/migrations")]
+    async fn framework_masks_bands_without_permission(pool: sqlx::PgPool) {
+        bt_db::seed::seed_demo(&pool).await.unwrap();
+        let lead = login_token(&pool, "e.glebov@beeteam.io").await;
+        let json = get_framework_json(&pool, &lead).await;
+        assert!(json["levels"][0]["band_low"].is_null());
+        assert!(json["levels"][0]["band_mid"].is_null());
+        assert!(json["levels"][0]["band_high"].is_null());
+        assert!(json["levels"][0]["band_shape"]["low"].is_number());
+        assert!(json["tax_rate"].is_null());
+    }
+
+    #[sqlx::test(migrations = "../bt-db/migrations")]
+    async fn framework_shows_bands_with_permission(pool: sqlx::PgPool) {
+        bt_db::seed::seed_demo(&pool).await.unwrap();
+        let hr = login_token(&pool, "o.klimova@beeteam.io").await;
+        let json = get_framework_json(&pool, &hr).await;
+        assert!(json["levels"][0]["band_mid"].is_number());
+        assert!(json["levels"][0]["band_low"].is_number());
+        assert!(json["levels"][0]["band_high"].is_number());
+        assert!((json["tax_rate"].as_f64().unwrap() - 0.10).abs() < 1e-9);
+        let ic7 = json["levels"].as_array().unwrap().iter().find(|l| l["code"] == "IC7").unwrap();
+        assert!((ic7["band_shape"]["high"].as_f64().unwrap() - 1.0).abs() < 1e-9);
+    }
+
+    #[sqlx::test(migrations = "../bt-db/migrations")]
+    async fn check_constraint_rejects_inverted_band(pool: sqlx::PgPool) {
+        bt_db::seed::seed_demo(&pool).await.unwrap();
+        // Directly violate band_low <= band_high — the CHECK must reject it.
+        let res = sqlx::query("UPDATE grade_levels SET band_low = band_high + 1 WHERE ord = 1")
+            .execute(&pool).await;
+        assert!(res.is_err(), "CHECK band_order must reject low > high");
+
+        // Also reject a valid low but mid > high.
+        let res2 = sqlx::query("UPDATE grade_levels SET band_mid = band_high + 1 WHERE ord = 1")
+            .execute(&pool).await;
+        assert!(res2.is_err(), "CHECK band_order must reject mid > high");
+    }
+
+    async fn patch_bands(pool: &sqlx::PgPool, token: &str, body: &str) -> StatusCode {
+        app(pool.clone()).oneshot(
+            Request::builder().method("PATCH").uri("/v1/grades/bands")
+                .header("authorization", format!("Bearer {token}"))
+                .header("content-type", "application/json")
+                .body(Body::from(body.to_string())).unwrap(),
+        ).await.unwrap().status()
+    }
+
+    #[sqlx::test(migrations = "../bt-db/migrations")]
+    async fn patch_bands_updates_numbers_and_tax(pool: sqlx::PgPool) {
+        bt_db::seed::seed_demo(&pool).await.unwrap();
+        let hr = login_token(&pool, "o.klimova@beeteam.io").await;
+        let status = patch_bands(&pool, &hr,
+            r#"{"tax_rate":0.12,"levels":[{"ord":1,"band_low":320000,"band_mid":400000,"band_high":500000}]}"#).await;
+        assert_eq!(status, StatusCode::OK);
+
+        let ws = "(SELECT workspace_id FROM users WHERE email='o.klimova@beeteam.io')";
+        let row: (String, f64) = sqlx::query_as(&format!(
+            "SELECT name, band_mid FROM grade_levels WHERE ord = 1 AND workspace_id = {ws}"))
+            .fetch_one(&pool).await.unwrap();
+        assert_eq!(row.0, "Trainee", "text columns untouched");
+        assert_eq!(row.1, 400000.0);
+        let tax: (f64,) = sqlx::query_as(&format!(
+            "SELECT salary_tax_rate FROM workspaces WHERE id = {ws}"))
+            .fetch_one(&pool).await.unwrap();
+        assert!((tax.0 - 0.12).abs() < 1e-9);
+    }
+
+    #[sqlx::test(migrations = "../bt-db/migrations")]
+    async fn patch_bands_rejects_invalid(pool: sqlx::PgPool) {
+        bt_db::seed::seed_demo(&pool).await.unwrap();
+        let hr = login_token(&pool, "o.klimova@beeteam.io").await;
+        let s1 = patch_bands(&pool, &hr,
+            r#"{"tax_rate":0.1,"levels":[{"ord":1,"band_low":500000,"band_mid":400000,"band_high":600000}]}"#).await;
+        assert_eq!(s1, StatusCode::BAD_REQUEST);
+        let s2 = patch_bands(&pool, &hr, r#"{"tax_rate":1.5,"levels":[]}"#).await;
+        assert_eq!(s2, StatusCode::BAD_REQUEST);
+    }
+
+    #[sqlx::test(migrations = "../bt-db/migrations")]
+    async fn patch_bands_forbidden_for_lead(pool: sqlx::PgPool) {
+        bt_db::seed::seed_demo(&pool).await.unwrap();
+        let lead = login_token(&pool, "e.glebov@beeteam.io").await;
+        let status = patch_bands(&pool, &lead,
+            r#"{"tax_rate":0.1,"levels":[{"ord":1,"band_low":320000,"band_mid":400000,"band_high":500000}]}"#).await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+    }
+
+    #[sqlx::test(migrations = "../bt-db/migrations")]
+    async fn patch_bands_tax_only_succeeds(pool: sqlx::PgPool) {
+        bt_db::seed::seed_demo(&pool).await.unwrap();
+        let hr = login_token(&pool, "o.klimova@beeteam.io").await;
+        let status = patch_bands(&pool, &hr, r#"{"tax_rate":0.15,"levels":[]}"#).await;
+        assert_eq!(status, StatusCode::OK);
+        let tax: (f64,) = sqlx::query_as(
+            "SELECT salary_tax_rate FROM workspaces WHERE id = \
+             (SELECT workspace_id FROM users WHERE email='o.klimova@beeteam.io')")
+            .fetch_one(&pool).await.unwrap();
+        assert!((tax.0 - 0.15).abs() < 1e-9);
     }
 }

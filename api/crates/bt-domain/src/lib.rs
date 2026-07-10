@@ -340,6 +340,13 @@ pub struct TemplateDetail {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct BandShape {
+    pub low: f64,
+    pub mid: f64,
+    pub high: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct GradeLevel {
     pub ord: i32,
     pub code: String,
@@ -348,9 +355,10 @@ pub struct GradeLevel {
     pub autonomy: String,
     pub scope: String,
     pub mgr: bool,
-    pub band_low: f64,
-    pub band_mid: f64,
-    pub band_high: f64,
+    pub band_shape: BandShape,
+    pub band_low: Option<f64>,
+    pub band_mid: Option<f64>,
+    pub band_high: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -384,6 +392,7 @@ pub struct Discipline {
 pub struct GradesFramework {
     pub levels: Vec<GradeLevel>,
     pub disciplines: Vec<Discipline>,
+    pub tax_rate: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -504,6 +513,20 @@ pub struct UpdateLevel {
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct UpdateLevels {
     pub levels: Vec<UpdateLevel>,
+}
+
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct UpdateBand {
+    pub ord: i32,
+    pub band_low: f64,
+    pub band_mid: f64,
+    pub band_high: f64,
+}
+
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct UpdateBands {
+    pub tax_rate: f64,
+    pub levels: Vec<UpdateBand>,
 }
 
 #[derive(Debug, Clone, Deserialize, ToSchema)]

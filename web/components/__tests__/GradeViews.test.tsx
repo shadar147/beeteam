@@ -6,8 +6,8 @@ import { GradeBands } from "../grades/GradeBands";
 import type { GradeLevel, Discipline } from "@/lib/query/grades";
 
 const LEVELS: GradeLevel[] = [
-  { ord: 1, code: "IC1", name: "Trainee", exp: "0–6 мес", autonomy: "Менторство", scope: "Учеба", mgr: false, band_low: 0.78, band_mid: 1.0, band_high: 1.25 },
-  { ord: 5, code: "IC5", name: "Senior", exp: "5+ лет", autonomy: "Архитектура", scope: "Сервис", mgr: true, band_low: 0.86, band_mid: 1.0, band_high: 1.14 },
+  { ord: 1, code: "IC1", name: "Trainee", exp: "0–6 мес", autonomy: "Менторство", scope: "Учеба", mgr: false, band_shape: { low: 0.62, mid: 0.79, high: 0.98 }, band_low: null, band_mid: null, band_high: null },
+  { ord: 5, code: "IC5", name: "Senior", exp: "5+ лет", autonomy: "Архитектура", scope: "Сервис", mgr: true, band_shape: { low: 0.30, mid: 0.39, high: 0.49 }, band_low: null, band_mid: null, band_high: null },
 ];
 
 const DISC: Discipline = {

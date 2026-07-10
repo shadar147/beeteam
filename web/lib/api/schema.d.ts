@@ -212,6 +212,22 @@ export interface paths {
         patch: operations["update_goal"];
         trace?: never;
     };
+    "/v1/grades/bands": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["update_bands"];
+        trace?: never;
+    };
     "/v1/grades/disciplines": {
         parameters: {
             query?: never;
@@ -632,6 +648,14 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        BandShape: {
+            /** Format: double */
+            high: number;
+            /** Format: double */
+            low: number;
+            /** Format: double */
+            mid: number;
+        };
         BlockLevel: {
             block_key: string;
             /** Format: int32 */
@@ -835,11 +859,12 @@ export interface components {
         GradeLevel: {
             autonomy: string;
             /** Format: double */
-            band_high: number;
+            band_high?: number | null;
             /** Format: double */
-            band_low: number;
+            band_low?: number | null;
             /** Format: double */
-            band_mid: number;
+            band_mid?: number | null;
+            band_shape: components["schemas"]["BandShape"];
             code: string;
             exp: string;
             mgr: boolean;
@@ -851,6 +876,8 @@ export interface components {
         GradesFramework: {
             disciplines: components["schemas"]["Discipline"][];
             levels: components["schemas"]["GradeLevel"][];
+            /** Format: double */
+            tax_rate?: number | null;
         };
         /** @description Liveness/readiness payload returned by `GET /v1/health`. */
         Health: {
@@ -1058,6 +1085,21 @@ export interface components {
             /** Format: uuid */
             id: string;
             name: string;
+        };
+        UpdateBand: {
+            /** Format: double */
+            band_high: number;
+            /** Format: double */
+            band_low: number;
+            /** Format: double */
+            band_mid: number;
+            /** Format: int32 */
+            ord: number;
+        };
+        UpdateBands: {
+            levels: components["schemas"]["UpdateBand"][];
+            /** Format: double */
+            tax_rate: number;
         };
         UpdateCompetencyRequest: {
             label?: string | null;
@@ -1682,6 +1724,41 @@ export interface operations {
                 content?: never;
             };
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    update_bands: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateBands"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GradeLevel"][];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

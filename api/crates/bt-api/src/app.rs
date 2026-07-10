@@ -75,6 +75,7 @@ pub fn build_router(state: AppState) -> Router {
         .route("/v1/templates/:id", get(routes::templates::get_template))
         .route("/v1/grades/framework", get(routes::grades::get_framework))
         .route("/v1/grades/levels", axum::routing::patch(routes::grades::update_levels))
+        .route("/v1/grades/bands", axum::routing::patch(routes::grades::update_bands))
         .route("/v1/grades/disciplines/:id", axum::routing::put(routes::grades::put_discipline))
         .route("/v1/grades/disciplines", axum::routing::post(routes::grades::create_discipline))
         .route_layer(axum::middleware::from_fn_with_state(state.clone(), require_auth));

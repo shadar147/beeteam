@@ -10,6 +10,7 @@ export type MatrixCell = components["schemas"]["MatrixCell"];
 export type UpdateLevels = components["schemas"]["UpdateLevels"];
 export type PutDiscipline = components["schemas"]["PutDiscipline"];
 export type CreateDiscipline = components["schemas"]["CreateDiscipline"];
+export type UpdateBands = components["schemas"]["UpdateBands"];
 
 export function useGradesFramework() {
   return useQuery<GradesFramework>({
@@ -55,6 +56,18 @@ export function useCreateDiscipline() {
   return useMutation({
     mutationFn: async (body: CreateDiscipline) => {
       const { data, error } = await api.POST("/v1/grades/disciplines", { body });
+      if (error) throw error;
+      return data!;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["grades-framework"] }),
+  });
+}
+
+export function useUpdateBands() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (body: UpdateBands) => {
+      const { data, error } = await api.PATCH("/v1/grades/bands", { body });
       if (error) throw error;
       return data!;
     },
