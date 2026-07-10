@@ -4,7 +4,7 @@ import { Layers, SlidersHorizontal, Sparkles, CircleCheck, Settings, Pencil, Che
 import { cn } from "@/lib/utils";
 import { SegControl } from "@/components/SegControl";
 import {
-  useGradesFramework, useUpdateLevels, usePutDiscipline, useCreateDiscipline,
+  useGradesFramework, useUpdateLevels, usePutDiscipline, useCreateDiscipline, useUpdateBands,
   type Discipline, type PutDiscipline as PutDisciplineBody,
 } from "@/lib/query/grades";
 import { GradeLevels } from "./GradeLevels";
@@ -14,7 +14,8 @@ import { LevelsEditor } from "./LevelsEditor";
 import { MatrixEditor } from "./MatrixEditor";
 import { CellEditor } from "./CellEditor";
 import { NewDisciplineModal } from "./NewDisciplineModal";
-import { emptyCells, type Draft, type DraftBlock, type DraftLevel } from "./editorTypes";
+import { BandsEditor } from "./BandsEditor";
+import { emptyCells, bandsDraftValid, type Draft, type DraftBlock, type DraftLevel, type BandsDraft, type DraftBand } from "./editorTypes";
 
 type Tab = "levels" | "matrix" | "bands";
 
@@ -38,15 +39,17 @@ function snapshot(disc: Discipline, levels: DraftLevel[]): Draft {
   return { discId: disc.id, label: disc.label, icon: disc.icon, description: disc.description, blocks, levels, levelsDirty: false };
 }
 
-export function GradesClient({ canEdit }: { canEdit: boolean }) {
+export function GradesClient({ canEdit, canEditBands }: { canEdit: boolean; canEditBands: boolean }) {
   const fw = useGradesFramework();
   const updateLevels = useUpdateLevels();
   const putDiscipline = usePutDiscipline();
   const createDiscipline = useCreateDiscipline();
+  const updateBands = useUpdateBands();
 
   const [disc, setDisc] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("matrix");
   const [draft, setDraft] = useState<Draft | null>(null);
+  const [bandsDraft, setBandsDraft] = useState<BandsDraft | null>(null);
   const [openCell, setOpenCell] = useState<{ blockIdx: number; levelOrd: number } | null>(null);
   const [newDisc, setNewDisc] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -67,6 +70,7 @@ export function GradesClient({ canEdit }: { canEdit: boolean }) {
     return <div className="p-6 text-center text-[14px] text-ink-3">Карта грейдов пока не настроена</div>;
   }
   const editing = draft !== null;
+  const editingBands = bandsDraft !== null;
   const activeKey = disc ?? disciplines[0].key;
   const active = disciplines.find((d) => d.key === activeKey) ?? disciplines[0];
   const sortedLevels = [...levels].sort((a, b) => a.ord - b.ord);
@@ -80,6 +84,39 @@ export function GradesClient({ canEdit }: { canEdit: boolean }) {
     setError(null);
   };
   const cancelEdit = () => { setDraft(null); setError(null); };
+
+  const enterBandsEdit = () => {
+    setBandsDraft({
+      taxPct: Math.round((fw.data!.tax_rate ?? 0) * 100),
+      levels: sortedLevels.map((l): DraftBand => ({
+        ord: l.ord, code: l.code, name: l.name,
+        band_low: l.band_low ?? 0, band_mid: l.band_mid ?? 0, band_high: l.band_high ?? 0,
+      })),
+    });
+    setTab("bands");
+    setError(null);
+  };
+  const cancelBandsEdit = () => { setBandsDraft(null); setError(null); };
+  const setBand = (ord: number, patch: Partial<DraftBand>) =>
+    setBandsDraft((d) => (d ? { ...d, levels: d.levels.map((l) => (l.ord === ord ? { ...l, ...patch } : l)) } : d));
+  const setTax = (pct: number) => setBandsDraft((d) => (d ? { ...d, taxPct: pct } : d));
+  const saveBands = async () => {
+    if (!bandsDraft) return;
+    setError(null);
+    try {
+      await updateBands.mutateAsync({
+        tax_rate: bandsDraft.taxPct / 100,
+        levels: bandsDraft.levels.map((l) => ({
+          ord: l.ord, band_low: l.band_low, band_mid: l.band_mid, band_high: l.band_high,
+        })),
+      });
+      setBandsDraft(null);
+    } catch {
+      setError("Не удалось сохранить вилки. Проверьте значения и попробуйте ещё раз.");
+    }
+  };
+  const bandsBusy = updateBands.isPending;
+  const bandsValid = bandsDraft ? bandsDraftValid(bandsDraft) : false;
 
   const save = async () => {
     if (!draft) return;
@@ -142,14 +179,21 @@ export function GradesClient({ canEdit }: { canEdit: boolean }) {
           <h1 className="flex items-center gap-2 text-[20px] font-semibold text-ink">
             Грейды
             {editing && <span className="rounded-md bg-brand-soft px-2 py-0.5 text-[11px] font-semibold text-brand-text">режим редактирования</span>}
+            {editingBands && <span className="rounded-md bg-brand-soft px-2 py-0.5 text-[11px] font-semibold text-brand-text">редактирование вилок</span>}
           </h1>
           <p className="text-[13px] text-ink-3 tabular">Карта компетенций по дисциплинам · 7 уровней (IC1–IC7) · ревью раз в 6 мес</p>
         </div>
         <div className="flex shrink-0 gap-2">
-          {!editing && canEdit && (
+          {!editing && !editingBands && canEdit && (
             <button type="button" onClick={enterEdit}
               className="inline-flex items-center gap-1.5 rounded-md bg-brand px-3 py-1.5 text-[13px] font-medium text-brand-text">
               <Pencil size={14} /> Редактировать
+            </button>
+          )}
+          {!editing && !editingBands && tab === "bands" && canEditBands && (
+            <button type="button" onClick={enterBandsEdit}
+              className="inline-flex items-center gap-1.5 rounded-md bg-brand px-3 py-1.5 text-[13px] font-medium text-brand-text">
+              <Pencil size={14} /> Редактировать вилки
             </button>
           )}
           {editing && (
@@ -159,6 +203,18 @@ export function GradesClient({ canEdit }: { canEdit: boolean }) {
                 <X size={14} /> Отмена
               </button>
               <button type="button" onClick={save} disabled={busy}
+                className="inline-flex items-center gap-1.5 rounded-md bg-brand px-3 py-1.5 text-[13px] font-medium text-brand-text disabled:opacity-60">
+                <Check size={14} /> Сохранить
+              </button>
+            </>
+          )}
+          {editingBands && (
+            <>
+              <button type="button" onClick={cancelBandsEdit} disabled={bandsBusy}
+                className="inline-flex items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-[13px] text-ink-2 hover:bg-bg-tint disabled:opacity-60">
+                <X size={14} /> Отмена
+              </button>
+              <button type="button" onClick={saveBands} disabled={bandsBusy || !bandsValid}
                 className="inline-flex items-center gap-1.5 rounded-md bg-brand px-3 py-1.5 text-[13px] font-medium text-brand-text disabled:opacity-60">
                 <Check size={14} /> Сохранить
               </button>
@@ -176,10 +232,10 @@ export function GradesClient({ canEdit }: { canEdit: boolean }) {
         {disciplines.map((d) => {
           const Icon = DISC_ICONS[d.icon] ?? Layers;
           const on = d.key === activeKey;
-          const dimmed = editing && !on;
+          const dimmed = (editing || editingBands) && !on;
           return (
             <button key={d.key} type="button"
-              onClick={() => !editing && setDisc(d.key)}
+              onClick={() => !editing && !editingBands && setDisc(d.key)}
               disabled={dimmed}
               className={cn(
                 "flex items-center gap-2.5 rounded-xl border p-3 text-left transition-colors",
@@ -235,8 +291,8 @@ export function GradesClient({ canEdit }: { canEdit: boolean }) {
           options={editing
             ? [{ value: "levels", label: "Уровни" }, { value: "matrix", label: "Матрица" }]
             : [{ value: "levels", label: "Уровни" }, { value: "matrix", label: "Матрица" }, { value: "bands", label: "Вилки" }]}
-          value={tab === "bands" && editing ? "matrix" : tab}
-          onChange={(v) => setTab(v as Tab)} />
+          value={editingBands ? "bands" : tab === "bands" && editing ? "matrix" : tab}
+          onChange={(v) => { if (!editingBands) setTab(v as Tab); }} />
       </div>
 
       {editing && draft ? (
@@ -248,6 +304,8 @@ export function GradesClient({ canEdit }: { canEdit: boolean }) {
             onRename={renameBlock} onMove={moveBlock} onDelete={deleteBlock} onAdd={addBlock}
             onOpenCell={(blockIdx, levelOrd) => setOpenCell({ blockIdx, levelOrd })} />
         )
+      ) : editingBands && bandsDraft ? (
+        <BandsEditor levels={bandsDraft.levels} taxPct={bandsDraft.taxPct} onBand={setBand} onTax={setTax} />
       ) : tab === "levels" ? (
         <GradeLevels levels={levels} />
       ) : tab === "bands" ? (

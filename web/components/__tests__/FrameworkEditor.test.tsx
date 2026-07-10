@@ -127,14 +127,14 @@ describe("NewDisciplineModal", () => {
 
 describe("GradesClient edit gating", () => {
   it("shows «Редактировать» only when canEdit", () => {
-    const { rerender } = render(<GradesClient canEdit={false} />);
+    const { rerender } = render(<GradesClient canEdit={false} canEditBands={false} />);
     expect(screen.queryByRole("button", { name: "Редактировать" })).not.toBeInTheDocument();
-    rerender(<GradesClient canEdit={true} />);
+    rerender(<GradesClient canEdit={true} canEditBands={false} />);
     expect(screen.getByRole("button", { name: "Редактировать" })).toBeInTheDocument();
   });
 
   it("enters edit mode and hides the Вилки tab", () => {
-    render(<GradesClient canEdit={true} />);
+    render(<GradesClient canEdit={true} canEditBands={false} />);
     fireEvent.click(screen.getByRole("button", { name: "Редактировать" }));
     expect(screen.getByText("режим редактирования")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Вилки" })).not.toBeInTheDocument();
