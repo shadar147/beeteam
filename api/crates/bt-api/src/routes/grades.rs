@@ -536,4 +536,36 @@ mod tests {
         assert_eq!(arch["cells"][0]["required"], false);
         assert!(arch["cells"][0]["text"].is_null());
     }
+
+    #[sqlx::test(migrations = "../bt-db/migrations")]
+    async fn seed_bands_are_gross_tenge(pool: sqlx::PgPool) {
+        bt_db::seed::seed_demo(&pool).await.unwrap();
+        let row: (f64, f64) = sqlx::query_as(
+            "SELECT band_mid, band_high FROM grade_levels WHERE ord = 7 \
+             AND workspace_id = (SELECT id FROM workspaces LIMIT 1)",
+        ).fetch_one(&pool).await.unwrap();
+        assert_eq!(row.0, 3_700_000.0);
+        assert_eq!(row.1, 4_600_000.0);
+
+        let ic1: (f64, f64) = sqlx::query_as(
+            "SELECT band_low, band_mid FROM grade_levels WHERE ord = 1 \
+             AND workspace_id = (SELECT id FROM workspaces LIMIT 1)",
+        ).fetch_one(&pool).await.unwrap();
+        assert_eq!(ic1.0, 300_000.0);
+        assert_eq!(ic1.1, 380_000.0);
+    }
+
+    #[sqlx::test(migrations = "../bt-db/migrations")]
+    async fn check_constraint_rejects_inverted_band(pool: sqlx::PgPool) {
+        bt_db::seed::seed_demo(&pool).await.unwrap();
+        // Directly violate band_low <= band_high — the CHECK must reject it.
+        let res = sqlx::query("UPDATE grade_levels SET band_low = band_high + 1 WHERE ord = 1")
+            .execute(&pool).await;
+        assert!(res.is_err(), "CHECK band_order must reject low > high");
+
+        // Also reject a valid low but mid > high.
+        let res2 = sqlx::query("UPDATE grade_levels SET band_mid = band_high + 1 WHERE ord = 1")
+            .execute(&pool).await;
+        assert!(res2.is_err(), "CHECK band_order must reject mid > high");
+    }
 }
