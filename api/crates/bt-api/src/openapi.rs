@@ -50,6 +50,8 @@ use utoipa::OpenApi;
         crate::routes::approvals::list_pending_reviews,
         crate::routes::approvals::approve_review,
         crate::routes::approvals::reject_review,
+        crate::routes::admin::list_teams,
+        crate::routes::admin::list_leads,
     ),
     components(schemas(
         bt_domain::Health,
@@ -107,6 +109,9 @@ use utoipa::OpenApi;
         bt_domain::PutBlock,
         bt_domain::PutCell,
         bt_domain::CreateDiscipline,
+        bt_domain::TeamRow,
+        bt_domain::AssignableLead,
+        bt_domain::TeamInput,
     )),
     info(title = "BeeTeam API", version = "0.1.0")
 )]
