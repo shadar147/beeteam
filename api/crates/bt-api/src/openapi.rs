@@ -52,6 +52,9 @@ use utoipa::OpenApi;
         crate::routes::approvals::reject_review,
         crate::routes::admin::list_teams,
         crate::routes::admin::list_leads,
+        crate::routes::admin::create_team,
+        crate::routes::admin::update_team,
+        crate::routes::admin::delete_team,
     ),
     components(schemas(
         bt_domain::Health,
