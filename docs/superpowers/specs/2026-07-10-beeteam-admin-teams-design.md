@@ -85,16 +85,16 @@ POST /v1/teams
   body: CreateTeam { name, mission: Option<String>, color, lead_id: Option<Uuid>,
                      default_cadence, visibility }
   400 on: empty name; cadence ∉ {1w,2w,4w}; visibility ∉ {private,hr,org}; color not a #RRGGBB hex;
-       lead_id present but not a user in this workspace.
-  Sets default_template_id = (SELECT id FROM field_templates WHERE workspace_id=$ ORDER BY created_at
-       LIMIT 1)  (nullable).
+       lead_id present but not a lead/hr_admin user in this workspace.
+  Sets default_template_id = (SELECT id FROM field_templates WHERE workspace_id=$ ORDER BY system DESC, updated_at
+       LIMIT 1)  (nullable; prefers the workspace's system template).
   201 → TeamRow (member_count 0)
 
 PATCH /v1/teams/{id}
   404 unless the team is in the caller's workspace.
   body: UpdateTeam { name, mission: Option<String>, color, lead_id: Option<Uuid>,
                      default_cadence, visibility }   // full replace of these fields
-  Same 400 validation as POST (incl. lead_id-in-workspace). lead_id = null clears the lead.
+  Same 400 validation as POST (incl. lead_id must be a lead/hr_admin in workspace). lead_id = null clears the lead.
   200 → TeamRow
 
 DELETE /v1/teams/{id}
@@ -140,7 +140,7 @@ from the prototype; amber on the `brand` token. The Next proxy already forwards 
 ## Edge cases
 
 - No `manage_workspace` → no «Администрирование» section, no `/admin/teams`; a direct API call → 403.
-- Empty name / bad cadence / bad visibility / bad color / lead_id not in workspace → 400; Save disabled
+- Empty name / bad cadence / bad visibility / bad color / lead_id not a lead/hr_admin in workspace → 400; Save disabled
   client-side for the client-checkable ones.
 - Delete a team with members → 409, banner, team kept.
 - `lead_id = null` → team shows «Без лида»; assigning later via PATCH clears the flag.
@@ -153,7 +153,7 @@ from the prototype; amber on the `brand` token. The Next proxy already forwards 
 - **bt-api** (`routes/teams.rs mod tests`, existing patterns): `GET /teams` — HR sees the seeded team
   with `member_count = 8` and the lead's name; lead (no ManageWorkspace) → 403. `POST` — HR creates a
   team (201, member_count 0, default_template_id set to the seeded template); empty name / bad cadence
-  / bad visibility / bad color → 400; unknown lead_id → 400. `PATCH` — rename + reassign lead persists;
+  / bad visibility / bad color → 400; unknown lead_id or employee-role lead_id → 400. `PATCH` — rename + reassign lead persists;
   foreign-workspace/unknown id → 404. `DELETE` — a fresh empty team → 204; the seeded team (8 members)
   → 409 and still present. `GET /leads` — returns Евгений (lead) and Ольга (hr_admin).
 - **web unit** (Vitest): `TeamEditModal` (Save disabled until a valid name; cadence/visibility/lead

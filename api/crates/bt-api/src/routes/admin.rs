@@ -73,13 +73,14 @@ fn validate_team_input(b: &TeamInput) -> AppResult<()> {
     Ok(())
 }
 
-/// 400 if lead_id is Some but not a user in this workspace.
+/// 400 if lead_id is Some but not a lead/hr_admin in this workspace.
 async fn check_lead(pool: &sqlx::PgPool, workspace_id: Uuid, lead_id: Option<Uuid>) -> AppResult<()> {
     if let Some(lid) = lead_id {
-        let ok: Option<(Uuid,)> = sqlx::query_as("SELECT id FROM users WHERE id = $1 AND workspace_id = $2")
-            .bind(lid).bind(workspace_id).fetch_optional(pool).await?;
+        let ok: Option<(Uuid,)> = sqlx::query_as(
+            "SELECT id FROM users WHERE id = $1 AND workspace_id = $2 AND role IN ('lead','hr_admin')",
+        ).bind(lid).bind(workspace_id).fetch_optional(pool).await?;
         if ok.is_none() {
-            return Err(AppError::BadRequest("lead_id is not a user in this workspace".into()));
+            return Err(AppError::BadRequest("lead_id must be a lead or hr_admin in this workspace".into()));
         }
     }
     Ok(())
@@ -338,6 +339,25 @@ mod tests {
         let body = format!(
             "{{\"name\":\"X\",\"color\":\"#F5A524\",\"lead_id\":\"{}\",\"default_cadence\":\"2w\",\"visibility\":\"private\"}}",
             uuid::Uuid::new_v4());
+        let (status, _) = send(&pool, "POST", "/v1/teams", &hr, Some(&body)).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+    }
+
+    #[sqlx::test(migrations = "../bt-db/migrations")]
+    async fn create_team_rejects_non_lead_as_lead(pool: sqlx::PgPool) {
+        bt_db::seed::seed_demo(&pool).await.unwrap();
+        // Add an employee-role user in the seeded workspace.
+        let ws: (uuid::Uuid,) = sqlx::query_as(
+            "SELECT workspace_id FROM users WHERE email = 'o.klimova@beeteam.io'")
+            .fetch_one(&pool).await.unwrap();
+        let emp: (uuid::Uuid,) = sqlx::query_as(
+            "INSERT INTO users (workspace_id, email, password_hash, name, role, hue) \
+             VALUES ($1, 'emp@beeteam.io', 'x', 'Emp', 'employee'::user_role, 10) RETURNING id",
+        ).bind(ws.0).fetch_one(&pool).await.unwrap();
+        let hr = login_token(&pool, "o.klimova@beeteam.io").await;
+        let body = format!(
+            "{{\"name\":\"X\",\"color\":\"#F5A524\",\"lead_id\":\"{}\",\"default_cadence\":\"2w\",\"visibility\":\"private\"}}",
+            emp.0);
         let (status, _) = send(&pool, "POST", "/v1/teams", &hr, Some(&body)).await;
         assert_eq!(status, StatusCode::BAD_REQUEST);
     }
