@@ -91,6 +91,8 @@ const cells = computed(() => {
       <div v-for="w in WEEKDAYS" :key="w">{{ w }}</div>
     </div>
     <div role="grid" class="mt-1 grid grid-cols-7 gap-1">
+      <!-- The chip <span> must follow the day number on the same line: a line break
+           there compiles to a space and the cell text becomes "10 ✓" instead of "10✓". -->
       <button
         v-for="(cell, i) in cells"
         :key="i"
@@ -106,8 +108,7 @@ const cells = computed(() => {
         )"
         @click="cell.mtg && emit('select', cell.mtg.id)"
       >
-        {{ cell.d.getDate() }}
-        <span
+        {{ cell.d.getDate() }}<span
           v-if="cell.chip"
           :class="cn(
             'absolute bottom-0.5 right-0.5 h-3 w-3 rounded-full text-[8px] leading-3',

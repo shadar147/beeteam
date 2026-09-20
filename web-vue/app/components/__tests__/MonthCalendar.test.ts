@@ -26,7 +26,7 @@ describe("MonthCalendar", () => {
     // Pick the enabled button with text "10" (in-month, has meeting m1)
     const buttons = screen.getAllByRole("gridcell");
     const btn10 = buttons.find(
-      (b) => b.textContent?.trim().startsWith("10") && !(b as HTMLButtonElement).disabled,
+      (b) => b.textContent?.startsWith("10") && !(b as HTMLButtonElement).disabled,
     );
     expect(btn10).toBeDefined();
     await fireEvent.click(btn10!);
