@@ -118,3 +118,21 @@ vitest/playwright configs.
   from `/home/claude/beeteam/web-vue`) and compare your screens at 1440×900.
 - Only create/modify files your package owns. Do not run `git` commands that
   change state (no commit/checkout/stash); the orchestrator commits.
+
+## Shared building blocks (already ported — read the source before using)
+Primitives in `app/components/`: `Avatar` (`name`, `hue`, `size?`; `initialsOf` lives in
+`~/components/Avatar` .ts sibling), `Pill` (`variant?`, `dot?`, default slot), `Modal`
+(`title`; emits `close`; default slot), `SegControl` (`options`, `value`; emits
+`change(value)` — not v-model; type `SegOption` exported from the .vue), `MoodTrendBars`
+(`trend`), `StatCard`, `FileDropzone` (`memberId`, `meetingId?`; emits `uploaded`),
+`grades/GradeChip` (`ord`, `code`, `size?`), `NoAccess` (needs a router in tests),
+`Topbar` (`title`), `Logo`, `ui/Button`.
+
+Query hooks in `app/lib/query/*`: same names as React. Every plain-value parameter is
+`MaybeRefOrGetter<T>` — pass a getter (`() => props.memberId`) so keys stay reactive.
+Results and mutation flags (`data`, `isLoading`, `isPending`) are refs. `useMeetingAutosave`
+and `useReviewAutosave` return `status` as a `ComputedRef`; as in React nothing flushes
+on unmount — call `flush()` yourself where React did.
+
+Session user: pages use `useSessionUser()` (auto-import); components receive it as a prop.
+Drawer: `import { useDrawerStore } from "~/stores/drawer"` (`open(id)`, `close()`, `openMeetingId`).
