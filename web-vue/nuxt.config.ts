@@ -26,5 +26,9 @@ export default defineNuxtConfig({
       link: [{ rel: "icon", href: "/favicon.ico" }],
     },
   },
-  typescript: { strict: true },
+  typescript: {
+    strict: true,
+    // node types are needed by tests that read files (tokens.test.ts).
+    tsConfig: { compilerOptions: { types: ["node"] } },
+  },
 });
