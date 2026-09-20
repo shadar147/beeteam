@@ -1,10 +1,15 @@
 # Porting guide: `web/` (Next.js + React) → `web-vue/` (Nuxt 4 + Vue 3)
 
-The goal is a **1:1 port**: same screens, same markup semantics, same Tailwind
-classes, same API calls, same behaviour. `web/` is the source of truth and stays
-untouched. Do not redesign, rename user-visible text, or "improve" logic. Parity is
-proven by the same Playwright specs (`web-vue/e2e`, copied from `web/e2e`) passing
-and by screenshots matching.
+> **Status (September 2026): the port is complete and `web/` has been deleted.**
+> `web-vue/` is now the only frontend and the source of truth. This file stays as the
+> conventions reference for the Vue codebase (sections "Rules for components and lib"
+> and "Shared building blocks"); the React paths below refer to git history
+> (`git show a0cdd9b:web/components/X.tsx`).
+
+The goal was a **1:1 port**: same screens, same markup semantics, same Tailwind
+classes, same API calls, same behaviour. Parity was proven by the same Playwright
+specs (`web-vue/e2e`, copied from `web/e2e`) passing, by a line-by-line audit of every
+file pair, and by screenshots matching.
 
 ## Stack
 Nuxt 4 (`ssr: false`, Nitro BFF in `server/`), Vue 3 `<script setup lang="ts">`,
@@ -103,9 +108,8 @@ vitest/playwright configs.
     comments from the React source).
 
 ## How to verify a change
-- `pnpm typecheck`, `pnpm test`, `pnpm test:e2e` (specs are the same files as `web/e2e`
-  and must pass unmodified while `web/` still exists).
-- Visual check: run both apps on the same seeded DB and compare screens at 1440×900.
+- `pnpm typecheck`, `pnpm test`, `pnpm test:e2e` (Node ≥ 22.19 — `nvm use` picks it up from `.nvmrc`).
+- Visual check at 1440×900 on the seeded DB (`docker compose up -d` + `cargo run -p bt-api`).
 
 ## Shared building blocks (already ported — read the source before using)
 Primitives in `app/components/`: `Avatar` (`name`, `hue`, `size?`; `initialsOf` lives in

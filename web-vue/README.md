@@ -1,12 +1,14 @@
 # BeeTeam web (Vue)
 
-Nuxt 4 + Vue 3 port of `../web` (Next.js). Same screens, tokens, API contract and
-e2e specs. Conventions and the React→Vue mapping live in [PORTING.md](./PORTING.md).
+Nuxt 4 + Vue 3 frontend. It is a 1:1 port of the original Next.js app (`web/`, removed
+in September 2026 — see git history before commit `a0cdd9b` for the React source).
+Conventions and the React→Vue mapping live in [PORTING.md](./PORTING.md).
 
 ## Run
 ```bash
 docker compose up -d            # from repo root: postgres + minio
 (cd ../api && cargo run -p bt-api)
+nvm use                         # Node 24 (.nvmrc): Nuxt 4 / Vitest 5 / jsdom 30 need Node >= 22.19
 pnpm install
 pnpm dev                        # http://localhost:3000
 ```
@@ -25,7 +27,7 @@ Demo logins: lead `e.glebov@beeteam.io`, HR `o.klimova@beeteam.io`, password `de
 ## Checks
 ```bash
 pnpm typecheck     # vue-tsc
-pnpm test          # vitest, 125 cases (1:1 with ../web)
-pnpm test:e2e      # playwright, same specs as ../web/e2e
+pnpm test          # vitest, 125 cases
+pnpm test:e2e      # playwright, 15 specs; needs the API + seeded DB, reuses a running dev server on :3000
 pnpm build
 ```
