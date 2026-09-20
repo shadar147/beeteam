@@ -26,11 +26,11 @@ const NAV: Nav[] = [
   { id: "export", label: "Экспорт", icon: "download", disabled: true, requires: "manage_team" },
 ];
 
-const ADMIN_NAV = [
-  { id: "admin-team", label: "Команды", icon: "team", disabled: true },
+const ADMIN_NAV: { id: string; label: string; icon: string; href?: string; disabled?: boolean }[] = [
+  { id: "admin-team", label: "Команды", icon: "team", href: "/admin/teams" },
   { id: "admin-leads", label: "Лиды", icon: "user", disabled: true },
   { id: "admin-settings", label: "Настройки", icon: "settings", disabled: true },
-] as const;
+];
 
 export function visibleNavItems(permissions: string[]): Nav[] {
   return NAV.filter((n) => n.requires === null || permissions.includes(n.requires));
@@ -48,6 +48,7 @@ export function Sidebar({ user }: { user: SessionUser }) {
   const pathname = usePathname();
   const items = visibleNavItems(user.permissions);
   const isHr = hasPermission(user, "approve_reviews");
+  const canAdmin = hasPermission(user, "manage_workspace");
 
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -89,11 +90,18 @@ export function Sidebar({ user }: { user: SessionUser }) {
         })}
       </div>
 
-      {!isHr && (
+      {canAdmin && (
         <div className="flex flex-col gap-0.5">
           <div className="px-2.5 py-1 text-[10.5px] font-semibold uppercase tracking-wide text-ink-4">Администрирование</div>
           {ADMIN_NAV.map((n) => (
-            <NavItem key={n.id} label={n.label} icon={n.icon} disabled={n.disabled} />
+            <NavItem
+              key={n.id}
+              label={n.label}
+              icon={n.icon}
+              href={n.href}
+              active={n.href ? pathname.startsWith(n.href) : false}
+              disabled={n.disabled ?? false}
+            />
           ))}
         </div>
       )}

@@ -42,6 +42,7 @@ pub enum Permission {
     ApproveReviews,   // 5a: pending queue, approve/reject
     EditFramework,    // 5b: matrix/levels/discipline editor
     EditSalaryBands,  // 5b: exact band numbers
+    ManageWorkspace,  // admin: teams / people / settings
 }
 
 pub fn permissions_of(role: &str) -> &'static [Permission] {
@@ -51,6 +52,7 @@ pub fn permissions_of(role: &str) -> &'static [Permission] {
             Permission::ApproveReviews,
             Permission::EditFramework,
             Permission::EditSalaryBands,
+            Permission::ManageWorkspace,
         ],
         _ => &[],
     }
@@ -396,6 +398,39 @@ pub struct GradesFramework {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct TeamRow {
+    pub id: uuid::Uuid,
+    pub name: String,
+    pub mission: Option<String>,
+    pub color: String,
+    pub lead_id: Option<uuid::Uuid>,
+    pub lead_name: Option<String>,
+    pub lead_hue: Option<i32>,
+    pub member_count: i64,
+    pub default_cadence: String,
+    pub visibility: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct AssignableLead {
+    pub id: uuid::Uuid,
+    pub name: String,
+    pub hue: i32,
+    pub role: String,
+}
+
+/// Body for both POST /v1/teams and PATCH /v1/teams/{id} (full replace of these fields).
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct TeamInput {
+    pub name: String,
+    pub mission: Option<String>,
+    pub color: String,
+    pub lead_id: Option<uuid::Uuid>,
+    pub default_cadence: String, // "1w" | "2w" | "4w"
+    pub visibility: String,      // "private" | "hr" | "org"
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct BlockLevel {
     pub block_key: String,
     pub level_ord: i32,
@@ -576,6 +611,7 @@ mod tests {
         assert!(permissions_of("hr_admin").contains(&Permission::ApproveReviews));
         assert!(permissions_of("hr_admin").contains(&Permission::EditFramework));
         assert!(permissions_of("hr_admin").contains(&Permission::EditSalaryBands));
+        assert!(permissions_of("hr_admin").contains(&Permission::ManageWorkspace));
         assert!(!permissions_of("hr_admin").contains(&Permission::ManageTeam));
         assert!(permissions_of("employee").is_empty());
         assert!(permissions_of("garbage").is_empty());
@@ -585,5 +621,12 @@ mod tests {
     fn permission_serializes_snake_case() {
         assert_eq!(serde_json::to_value(Permission::ApproveReviews).unwrap(), "approve_reviews");
         assert_eq!(serde_json::to_value(Permission::ManageTeam).unwrap(), "manage_team");
+    }
+
+    #[test]
+    fn hr_admin_can_manage_workspace() {
+        assert!(permissions_of("hr_admin").contains(&Permission::ManageWorkspace));
+        assert!(!permissions_of("lead").contains(&Permission::ManageWorkspace));
+        assert!(!permissions_of("employee").contains(&Permission::ManageWorkspace));
     }
 }
