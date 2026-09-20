@@ -13,7 +13,7 @@ Pinia, `openapi-fetch` (same generated `schema.d.ts`), `lucide-vue-next`,
 `reka-ui` only where a headless primitive is really needed, Vitest +
 `@testing-library/vue`, Playwright.
 
-## Already done (do not rewrite)
+## Foundation
 `nuxt.config.ts`, `tailwind.config.ts`, `app/assets/css/*`, `server/**` (login,
 logout, me, `/api/v1/*` proxy, cookie gate), `app/middleware/auth.global.ts`,
 `app/composables/useSessionUser.ts`, `app/plugins/vue-query.ts`,
@@ -102,22 +102,10 @@ vitest/playwright configs.
     code, comments only where the "why" is not obvious (carry over the useful
     comments from the React source).
 
-## How to verify your package
-- Dev servers are already running: React reference on http://localhost:3000, Vue on
-  http://localhost:3001 (HMR), API on :8080. Do **not** start/stop servers or touch the DB
-  directly. Demo logins: lead `e.glebov@beeteam.io`, HR `o.klimova@beeteam.io`, password `demo1234`.
-- Unit tests (only yours): `cd /home/claude/beeteam/web-vue && pnpm exec vitest run app/components/__tests__/X.test.ts`
-- E2E (only yours): `/home/claude/tools/e2e-vue.sh e2e/<spec>.spec.ts` — it takes a
-  global lock, reseeds the DB and runs against :3001. Never run Playwright any other way.
-  Specs must pass **unmodified**; if a spec truly cannot work because of a
-  framework difference, report it instead of editing it.
-- Types: `pnpm exec vue-tsc --noEmit -p .nuxt/tsconfig.app.json 2>&1 | grep "<your files>"` —
-  other packages are being written in parallel, ignore errors in files you don't own.
-- Visual check: screenshot both apps with Playwright (chromium at
-  `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`, require `@playwright/test`
-  from `/home/claude/beeteam/web-vue`) and compare your screens at 1440×900.
-- Only create/modify files your package owns. Do not run `git` commands that
-  change state (no commit/checkout/stash); the orchestrator commits.
+## How to verify a change
+- `pnpm typecheck`, `pnpm test`, `pnpm test:e2e` (specs are the same files as `web/e2e`
+  and must pass unmodified while `web/` still exists).
+- Visual check: run both apps on the same seeded DB and compare screens at 1440×900.
 
 ## Shared building blocks (already ported — read the source before using)
 Primitives in `app/components/`: `Avatar` (`name`, `hue`, `size?`; `initialsOf` lives in

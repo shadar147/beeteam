@@ -1,0 +1,118 @@
+<script setup lang="ts">
+import { computed, ref } from "vue";
+import { Check, Undo2 } from "lucide-vue-next";
+import Avatar from "~/components/Avatar.vue";
+import Pill from "~/components/Pill.vue";
+import Modal from "~/components/Modal.vue";
+import { DECISION_LABEL } from "~/components/grades/ReviewHistory";
+import ScoresReadonly from "./ScoresReadonly.vue";
+import RejectDialog from "./RejectDialog.vue";
+import type { PendingReview } from "~/lib/query/approvals";
+
+const props = defineProps<{ item: PendingReview; busy: boolean }>();
+const emit = defineEmits<{
+  approve: [reviewId: string];
+  reject: [reviewId: string, comment: string];
+}>();
+
+function fmt(d: string | null | undefined) {
+  if (!d) return "";
+  return new Date(d).toLocaleDateString("ru-RU", { day: "numeric", month: "long" });
+}
+
+const confirming = ref(false);
+const rejecting = ref(false);
+const r = computed(() => props.item.review);
+const promo = computed(() => r.value.decision === "promote");
+const effects = computed(() =>
+  promo.value
+    ? `IC${r.value.from_grade_ord} → IC${r.value.to_grade_ord ?? r.value.from_grade_ord} · compa в низ новой полосы · следующее ревью через 6 мес`
+    : "уровни по блокам обновятся по оценке лида · следующее ревью через 6 мес",
+);
+
+function confirmApprove() {
+  confirming.value = false;
+  emit("approve", r.value.id);
+}
+function submitReject(comment: string) {
+  rejecting.value = false;
+  emit("reject", r.value.id, comment);
+}
+</script>
+
+<template>
+  <div class="rounded-xl border border-line bg-bg-elev p-5">
+    <div class="mb-4 flex items-center gap-3">
+      <Avatar :name="item.member_name" :hue="item.member_hue" size="md" />
+      <div class="min-w-0 flex-1">
+        <div class="text-[14.5px] font-semibold text-ink">{{ item.member_name }}</div>
+        <div class="text-[12px] text-ink-3">
+          {{ item.team_name }} · {{ item.discipline_label }} · {{ r.period }} · отправлено {{ fmt(r.finalized_at) }}
+        </div>
+      </div>
+      <Pill variant="accent">
+        {{ r.decision ? DECISION_LABEL[r.decision] ?? r.decision : "—" }}
+      </Pill>
+    </div>
+
+    <div class="mb-1 text-[12px] font-semibold uppercase tracking-wide text-ink-4">
+      Оценка по блокам · IC{{ r.from_grade_ord }}<template v-if="r.target_ord != null"> → цель IC{{ r.target_ord }}</template>
+    </div>
+    <ScoresReadonly :scores="r.scores" />
+
+    <div v-if="r.summary" class="mt-4">
+      <div class="mb-1 text-[12px] font-semibold uppercase tracking-wide text-ink-4">Резюме лида</div>
+      <p class="text-[12.5px] leading-relaxed text-ink-2">{{ r.summary }}</p>
+    </div>
+
+    <div v-if="promo" class="mt-4 rounded-lg border border-line bg-bg-tint p-3">
+      <div class="mb-1 text-[12px] font-semibold uppercase tracking-wide text-ink-4">Влияние на вилку</div>
+      <p class="text-[12.5px] leading-relaxed text-ink-2">
+        Повышение IC{{ r.from_grade_ord }} → IC{{ r.to_grade_ord ?? r.from_grade_ord }} · позиция в полосе (compa) сбросится в нижнюю часть новой, более высокой вилки.
+      </p>
+    </div>
+
+    <div class="mt-5 flex justify-end gap-2 border-t border-line-2 pt-4">
+      <button
+        type="button"
+        :disabled="busy"
+        class="inline-flex items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-[13px] text-ink-2 hover:bg-bg-tint disabled:opacity-60"
+        @click="rejecting = true"
+      >
+        <Undo2 :size="14" /> Вернуть лиду
+      </button>
+      <button
+        type="button"
+        :disabled="busy"
+        class="inline-flex items-center gap-1.5 rounded-md bg-brand px-3 py-1.5 text-[13px] font-medium text-brand-text disabled:opacity-60"
+        @click="confirming = true"
+      >
+        <Check :size="14" /> Согласовать
+      </button>
+    </div>
+
+    <Modal v-if="confirming" title="Согласовать ревью" @close="confirming = false">
+      <p class="text-[13px] leading-relaxed text-ink-2">
+        {{ item.member_name }} · {{ effects }}
+      </p>
+      <div class="mt-3 flex justify-end gap-2">
+        <button
+          type="button"
+          class="rounded-md border border-line px-3 py-1.5 text-[13px] text-ink-2 hover:bg-bg-tint"
+          @click="confirming = false"
+        >
+          Отмена
+        </button>
+        <button
+          type="button"
+          :disabled="busy"
+          class="rounded-md bg-brand px-3 py-1.5 text-[13px] font-medium text-brand-text disabled:opacity-60"
+          @click="confirmApprove"
+        >
+          Подтвердить
+        </button>
+      </div>
+    </Modal>
+    <RejectDialog v-if="rejecting" :busy="busy" @close="rejecting = false" @submit="submitReject" />
+  </div>
+</template>

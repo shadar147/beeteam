@@ -1,4 +1,10 @@
 <script setup lang="ts">
-// STUB — replaced by the profile/drawer package (see PORTING.md).
+import { useDrawerStore } from "~/stores/drawer";
+import MeetingDrawer from "~/components/MeetingDrawer.vue";
+
+const drawer = useDrawerStore();
 </script>
-<template><span hidden /></template>
+
+<template>
+  <MeetingDrawer v-if="drawer.openMeetingId" :meeting-id="drawer.openMeetingId" @close="drawer.close()" />
+</template>
