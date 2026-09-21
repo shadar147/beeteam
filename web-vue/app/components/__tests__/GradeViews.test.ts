@@ -1,0 +1,54 @@
+import { render, screen, fireEvent } from "@testing-library/vue";
+import { describe, it, expect } from "vitest";
+import GradeLevels from "../grades/GradeLevels.vue";
+import GradeMatrix from "../grades/GradeMatrix.vue";
+import GradeBands from "../grades/GradeBands.vue";
+import type { GradeLevel, Discipline } from "~/lib/query/grades";
+
+const LEVELS: GradeLevel[] = [
+  { ord: 1, code: "IC1", name: "Trainee", exp: "0–6 мес", autonomy: "Менторство", scope: "Учеба", mgr: false, band_shape: { low: 0.62, mid: 0.79, high: 0.98 }, band_low: null, band_mid: null, band_high: null },
+  { ord: 5, code: "IC5", name: "Senior", exp: "5+ лет", autonomy: "Архитектура", scope: "Сервис", mgr: true, band_shape: { low: 0.30, mid: 0.39, high: 0.49 }, band_low: null, band_mid: null, band_high: null },
+];
+
+const DISC: Discipline = {
+  id: "d1", key: "backend", label: "Backend", icon: "fields", description: "API", ord: 0,
+  blocks: [
+    { id: "b1", key: "stack", name: "Серверный стек", ord: 0, cells: [
+      { level: 1, text: "CRUD под руководством", required: true },
+      { level: 2, text: "ORM, миграции", required: true },
+    ] },
+    { id: "b2", key: "arch", name: "Архитектура", ord: 1, cells: [
+      { level: 1, text: null, required: false },
+      { level: 2, text: "REST, HTTP", required: true },
+    ] },
+  ],
+};
+
+describe("Grade views", () => {
+  it("GradeLevels lists levels with a manager badge", () => {
+    render(GradeLevels, { props: { levels: LEVELS } });
+    expect(screen.getByText("IC1")).toBeInTheDocument();
+    expect(screen.getByText("Trainee")).toBeInTheDocument();
+    expect(screen.getByText("+ менедж. трек")).toBeInTheDocument(); // only IC5 is mgr
+  });
+
+  it("GradeMatrix renders block rows and opens a cell modal", async () => {
+    render(GradeMatrix, { props: { discipline: DISC, levels: LEVELS } });
+    expect(screen.getByText("Серверный стек")).toBeInTheDocument();
+    // a required cell shows truncated text; click → modal with full text
+    await fireEvent.click(screen.getByText("CRUD под руководством"));
+    expect(screen.getByText(/Что должен демонстрировать/)).toBeInTheDocument();
+  });
+
+  it("GradeMatrix dims a not-required cell", () => {
+    render(GradeMatrix, { props: { discipline: DISC, levels: LEVELS } });
+    // arch/IC1 is not required → rendered as «—», not clickable content
+    expect(screen.getAllByText("—").length).toBeGreaterThan(0);
+  });
+
+  it("GradeBands renders a band per level", () => {
+    render(GradeBands, { props: { levels: LEVELS } });
+    expect(screen.getByText("IC1")).toBeInTheDocument();
+    expect(screen.getByText(/Точные цифры/)).toBeInTheDocument();
+  });
+});

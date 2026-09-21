@@ -1,7 +1,9 @@
-# Node / Next.js
+# Node / Nuxt
 node_modules/
-.next/
-out/
+.nuxt/
+.output/
+.nitro/
+.cache/
 .pnpm-store/
 *.tsbuildinfo
 .turbo/
@@ -17,7 +19,6 @@ out/
 !.env.example
 
 # Build artifacts / data
-/web/lib/api/schema.d.ts.tmp
 *.log
 
 # OS / editor
@@ -29,6 +30,5 @@ out/
 /.docker-data/
 
 # Playwright reports and results
-/web/test-results/
-/web/playwright-report/
-/web/.playwright/
+/web-vue/test-results/
+/web-vue/playwright-report/
